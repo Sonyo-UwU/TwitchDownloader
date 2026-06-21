@@ -56,6 +56,12 @@ namespace TwitchDownloaderCore
                 throw new NotSupportedException("Only JSON chat files can be used as update input. HTML support may come in the future.");
             }
 
+            if (chatRoot.video.chapters.Any(c => c._type == "PART_CHANGE"))
+            {
+                // Merged chat
+                throw new NotSupportedException("Updating a merged chat is currently not supported.");
+            }
+
             // Dynamic step count setup
             int currentStep = 0;
             int totalSteps = 2;
