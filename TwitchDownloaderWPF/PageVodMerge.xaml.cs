@@ -1,7 +1,6 @@
 ﻿using Microsoft.Win32;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
-using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -12,10 +11,8 @@ using TwitchDownloaderCore.Models;
 using TwitchDownloaderCore.Options;
 using TwitchDownloaderCore.Services;
 using TwitchDownloaderCore.TwitchObjects;
-using TwitchDownloaderCore.TwitchObjects.Gql;
 using TwitchDownloaderWPF.Models;
 using TwitchDownloaderWPF.Properties;
-using TwitchDownloaderWPF.Services;
 using TwitchDownloaderWPF.Utils;
 using WpfAnimatedGif;
 
@@ -36,13 +33,13 @@ namespace TwitchDownloaderWPF
             public readonly string DisplayTime => ChatInfo.video.length <= 0 ? Translations.Strings.UnknownVideoLength : TimeSpan.FromSeconds(ChatInfo.video.length).ToString("c");
         }
 
-        private readonly ObservableCollection<InputInfo> Inputs = [];
+        private readonly ObservableCollection<InputInfo> InputsChat = [];
         private CancellationTokenSource _cancellationTokenSource;
 
         public PageVodMerge()
         {
             InitializeComponent();
-            inputList.ItemsSource = Inputs;
+            inputListChat.ItemsSource = InputsChat;
         }
 
         private async void btnBrowse_Click(object sender, RoutedEventArgs e)
@@ -60,8 +57,6 @@ namespace TwitchDownloaderWPF
             SetEnabled(false);
             SetActionButtonsEnabled(false);
 
-            bool displayVideoInfo = Inputs.Count == 0;
-
             foreach (string file in openFileDialog.FileNames)
             {
                 if (Path.GetExtension(file)!.ToLower() is not ".json" and not ".gz")
@@ -72,11 +67,7 @@ namespace TwitchDownloaderWPF
                 try
                 {
                     var chatRoot = await ChatJson.DeserializeAsync(file, true, true, false, CancellationToken.None);
-                    if (chatRoot.video.length <= 0 && Inputs.Count > 0)
-                    {
-                        await UpdateChatInfoAsync(chatRoot);
-                    }
-                    Inputs.Add(new InputInfo { FileName = file, ChatInfo = chatRoot });
+                    InputsChat.Add(new InputInfo { FileName = file, ChatInfo = chatRoot });
                     DisplayTotalLength();
                 }
                 catch (Exception ex)
@@ -89,126 +80,23 @@ namespace TwitchDownloaderWPF
                 }
             }
 
-            SetEnabled(Inputs.Count > 0);
-            SetActionButtonsEnabled(Inputs.Count >= 2);
-
-            if (displayVideoInfo && Inputs.Count > 0)
-            {
-                await DisplayVideoInfoAsync();
-            }
-        }
-
-        private async Task UpdateChatInfoAsync(ChatRoot chatRoot)
-        {
-            if (chatRoot.video.length > 0 && !string.IsNullOrEmpty(chatRoot.video.chapters[0].thumbnailUrl))
-                return;
-
-            try
-            {
-                string videoId = chatRoot.video.id;
-                if (videoId.All(char.IsDigit))
-                {
-                    GqlVideoResponse videoInfo = await TwitchHelper.GetVideoInfo(long.Parse(videoId));
-                    if (videoInfo.data.video == null)
-                    {
-                        AppendLog(Translations.Strings.ErrorLog + Translations.Strings.UnableToGetVideoInfo + ": " + Translations.Strings.VodExpiredOrIdCorrupt);
-                    }
-                    else
-                    {
-                        if (chatRoot.video.length <= 0)
-                            chatRoot.video.length = videoInfo.data.video.lengthSeconds;
-                        if (string.IsNullOrEmpty(chatRoot.video.title))
-                            chatRoot.video.title = videoInfo.data.video.title;
-                        if (chatRoot.video.created_at == default)
-                            chatRoot.video.created_at = videoInfo.data.video.createdAt;
-                        if (string.IsNullOrEmpty(chatRoot.streamer.name))
-                            chatRoot.streamer.name = videoInfo.data.video.owner.displayName;
-                        if (string.IsNullOrEmpty(chatRoot.video.chapters[0].thumbnailUrl))
-                            chatRoot.video.chapters[0].thumbnailUrl = videoInfo.data.video.thumbnailURLs.FirstOrDefault();
-                    }
-                }
-                else
-                {
-                    GqlClipResponse clipInfo = await TwitchHelper.GetClipInfo(videoId);
-                    if (clipInfo.data.clip.video == null)
-                    {
-                        AppendLog(Translations.Strings.ErrorLog + Translations.Strings.UnableToGetVideoInfo + ": " + Translations.Strings.VodExpiredOrIdCorrupt);
-                    }
-                    else
-                    {
-                        if (chatRoot.video.length <= 0)
-                            chatRoot.video.length = clipInfo.data.clip.durationSeconds;
-                        if (string.IsNullOrEmpty(chatRoot.video.title))
-                            chatRoot.video.title = clipInfo.data.clip.title;
-                        if (chatRoot.video.created_at == default)
-                            chatRoot.video.created_at = clipInfo.data.clip.createdAt;
-                        if (string.IsNullOrEmpty(chatRoot.streamer.name))
-                            chatRoot.streamer.name = clipInfo.data.clip.broadcaster.displayName;
-                        if (string.IsNullOrEmpty(chatRoot.video.chapters[0].thumbnailUrl))
-                            chatRoot.video.chapters[0].thumbnailUrl = clipInfo.data.clip.thumbnailURL;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(Application.Current.MainWindow!, Translations.Strings.UnableToGetInfoMessage, Translations.Strings.UnableToGetInfo, MessageBoxButton.OK, MessageBoxImage.Error);
-                AppendLog(Translations.Strings.ErrorLog + ex.Message);
-                if (Settings.Default.VerboseErrors)
-                {
-                    MessageBox.Show(Application.Current.MainWindow!, ex.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
-                }
-            }
-        }
-
-        private async Task DisplayVideoInfoAsync(ChatRoot chatRoot = null)
-        {
-            if (chatRoot is null && Inputs.Count == 0)
-            {
-                textCreatedAt.Text = string.Empty;
-                textStreamer.Text = string.Empty;
-                textTitle.Text = string.Empty;
-                labelLength.Text = string.Empty;
-                imgThumbnail.Source = null;
-                return;
-            }
-
-            chatRoot ??= Inputs[0].ChatInfo;
-
-            SetEnabled(false);
-            imgThumbnail.Source = null;
-
-            await UpdateChatInfoAsync(chatRoot);
-            if (!ThumbnailService.TryGetThumb(chatRoot.video.chapters[0].thumbnailUrl, out var image))
-            {
-                ThumbnailService.TryGetThumb(ThumbnailService.THUMBNAIL_MISSING_URL, out image);
-            }
-
-            // Finally, display info
-            var videoCreatedAt = chatRoot.video.created_at == default
-                ? chatRoot.comments[0].created_at - TimeSpan.FromSeconds(chatRoot.comments[0].content_offset_seconds)
-                : chatRoot.video.created_at;
-
-            textCreatedAt.Text = Settings.Default.UTCVideoTime ? videoCreatedAt.ToString(CultureInfo.CurrentCulture) : videoCreatedAt.ToLocalTime().ToString(CultureInfo.CurrentCulture);
-            textStreamer.Text = chatRoot.streamer.name;
-            textTitle.Text = chatRoot.video.title ?? Translations.Strings.Unknown;
-            imgThumbnail.Source = image;
-
-            SetEnabled(Inputs.Count > 0);
+            SetEnabled(InputsChat.Count > 0);
+            SetActionButtonsEnabled(InputsChat.Count >= 2);
         }
 
         private void DisplayTotalLength()
         {
             TimeSpan length = new();
-            foreach (InputInfo input in Inputs)
+            foreach (InputInfo input in InputsChat)
             {
                 length += TimeSpan.FromSeconds(input.ChatInfo.video.length);
             }
-            labelLength.Text = length.ToString("c");
+            labelLengthChat.Text = length.ToString("c");
         }
 
-        private void UpdateActionButtons(bool isUpdating)
+        private void UpdateActionButtons(bool isMerging)
         {
-            if (isUpdating)
+            if (isMerging)
             {
                 SplitBtnMerge.Visibility = Visibility.Collapsed;
                 BtnCancel.Visibility = Visibility.Visible;
@@ -260,8 +148,9 @@ namespace TwitchDownloaderWPF
             radioJson.IsEnabled = isEnabled;
             radioText.IsEnabled = isEnabled;
             radioHTML.IsEnabled = isEnabled;
-            numDelay.IsEnabled = isEnabled;
-            inputList.IsEnabled = isEnabled;
+            numDelayChat.IsEnabled = isEnabled;
+            numDelayVideo.IsEnabled = isEnabled;
+            inputListChat.IsEnabled = isEnabled;
         }
 
         private void SetPercent(int percent)
@@ -296,18 +185,18 @@ namespace TwitchDownloaderWPF
             );
         }
 
-        public ChatMergeOptions GetOptions()
+        public ChatMergeOptions GetChatOptions()
         {
-            return GetOptions(GetDefaultOutputFilename());
+            return GetChatOptions(GetDefaultOutputFilename());
         }
 
-        public ChatMergeOptions GetOptions(string outputFile)
+        public ChatMergeOptions GetChatOptions(string outputFile)
         {
             ChatMergeOptions options = new()
             {
-                InputFiles = [.. Inputs.Select(x => x.FileName)],
+                InputFiles = [.. InputsChat.Select(x => x.FileName)],
                 OutputFile = outputFile,
-                DelayBetweenParts = numDelay.Value,
+                DelayBetweenParts = numDelayChat.Value,
             };
 
             if (radioJson.IsChecked.GetValueOrDefault())
@@ -336,13 +225,13 @@ namespace TwitchDownloaderWPF
 
         public string GetDefaultOutputFilename()
         {
-            var firstChatInfo = Inputs[0].ChatInfo;
+            var firstChatInfo = InputsChat[0].ChatInfo;
             return FilenameService.GetFilename(
                 Settings.Default.TemplateChat,
-                textTitle.Text,
+                firstChatInfo.video.title,
                 firstChatInfo.video.id ?? firstChatInfo.comments.FirstOrDefault()?.content_id ?? "-1",
                 firstChatInfo.video.created_at,
-                textStreamer.Text,
+                firstChatInfo.streamer.name,
                 firstChatInfo.streamer.id.ToString(),
                 TimeSpan.FromSeconds(double.Max(0, firstChatInfo.video.start)),
                 TimeSpan.FromSeconds(firstChatInfo.video.length),
@@ -367,6 +256,112 @@ namespace TwitchDownloaderWPF
             {
                 ImageBehavior.SetAnimatedSource(statusImage, null);
                 statusImage.Source = image;
+            }
+        }
+
+        private async Task MergeChats()
+        {
+            SaveFileDialog saveFileDialog = new()
+            {
+                FileName = GetDefaultOutputFilename()
+            };
+
+
+            if (radioJson.IsChecked == true)
+            {
+                if (radioCompressionNone.IsChecked == true)
+                {
+                    saveFileDialog.Filter = "JSON Files | *.json";
+                    saveFileDialog.FileName += ".json";
+                }
+                else if (radioCompressionGzip.IsChecked == true)
+                {
+                    saveFileDialog.Filter = "GZip JSON Files | *.json.gz";
+                    saveFileDialog.FileName += ".json.gz";
+                }
+            }
+            else if (radioHTML.IsChecked == true)
+            {
+                saveFileDialog.Filter = "HTML Files | *.html";
+                saveFileDialog.FileName += ".html";
+            }
+            else if (radioText.IsChecked == true)
+            {
+                saveFileDialog.Filter = "TXT Files | *.txt";
+                saveFileDialog.FileName += ".txt";
+            }
+
+            if (saveFileDialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            try
+            {
+                ChatMergeOptions mergeOptions = GetChatOptions(saveFileDialog.FileName);
+
+                var mergeProgress = new WpfTaskProgress((LogLevel)Settings.Default.LogLevels, SetPercent, SetStatus, AppendLog);
+                var currentMerge = new ChatMerger(mergeOptions, mergeProgress);
+                try
+                {
+                    await currentMerge.ValidateInputsAsync(CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    AppendLog(Translations.Strings.ErrorLog + ex.Message);
+                    if (Settings.Default.VerboseErrors)
+                    {
+                        MessageBox.Show(Application.Current.MainWindow!, ex.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                    return;
+                }
+
+                btnBrowse.IsEnabled = false;
+                SetEnabled(false);
+                SetActionButtonsEnabled(false);
+
+                SetImage("Images/ppOverheat.gif", true);
+                statusMessage.Text = Translations.Strings.StatusUpdating;
+                _cancellationTokenSource = new CancellationTokenSource();
+                UpdateActionButtons(true);
+
+                try
+                {
+                    await currentMerge.MergeAsync(_cancellationTokenSource.Token);
+                    InputsChat.Clear();
+                    mergeProgress.SetStatus(Translations.Strings.StatusDone);
+                    SetImage("Images/ppHop.gif", true);
+                }
+                catch (Exception ex) when (ex is OperationCanceledException or TaskCanceledException && _cancellationTokenSource.IsCancellationRequested)
+                {
+                    mergeProgress.SetStatus(Translations.Strings.StatusCanceled);
+                    SetImage("Images/ppHop.gif", true);
+                }
+                catch (Exception ex)
+                {
+                    mergeProgress.SetStatus(Translations.Strings.StatusError);
+                    SetImage("Images/peepoSad.png", false);
+                    AppendLog(Translations.Strings.ErrorLog + ex.Message);
+                    if (Settings.Default.VerboseErrors)
+                    {
+                        MessageBox.Show(Application.Current.MainWindow!, ex.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                }
+
+                btnBrowse.IsEnabled = true;
+                mergeProgress.ReportProgress(0);
+                _cancellationTokenSource.Dispose();
+                UpdateActionButtons(false);
+
+                GC.Collect();
+            }
+            catch (Exception ex)
+            {
+                AppendLog(Translations.Strings.ErrorLog + ex.Message);
+                if (Settings.Default.VerboseErrors)
+                {
+                    MessageBox.Show(Application.Current.MainWindow!, ex.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
+                }
             }
         }
 
@@ -400,105 +395,13 @@ namespace TwitchDownloaderWPF
                 return;
             }
 
-            SaveFileDialog saveFileDialog = new()
+            if (TabChat.IsSelected)
             {
-                FileName = GetDefaultOutputFilename()
-            };
-
-            if (radioJson.IsChecked == true)
-            {
-                if (radioCompressionNone.IsChecked == true)
-                {
-                    saveFileDialog.Filter = "JSON Files | *.json";
-                    saveFileDialog.FileName += ".json";
-                }
-                else if (radioCompressionGzip.IsChecked == true)
-                {
-                    saveFileDialog.Filter = "GZip JSON Files | *.json.gz";
-                    saveFileDialog.FileName += ".json.gz";
-                }
+                await MergeChats();
             }
-            else if (radioHTML.IsChecked == true)
+            else
             {
-                saveFileDialog.Filter = "HTML Files | *.html";
-                saveFileDialog.FileName += ".html";
-            }
-            else if (radioText.IsChecked == true)
-            {
-                saveFileDialog.Filter = "TXT Files | *.txt";
-                saveFileDialog.FileName += ".txt";
-            }
 
-            if (saveFileDialog.ShowDialog() != true)
-            {
-                return;
-            }
-
-            try
-            {
-                ChatMergeOptions mergeOptions = GetOptions(saveFileDialog.FileName);
-
-                var mergeProgress = new WpfTaskProgress((LogLevel)Settings.Default.LogLevels, SetPercent, SetStatus, AppendLog);
-                var currentMerge = new ChatMerger(mergeOptions, mergeProgress);
-                try
-                {
-                    await currentMerge.ValidateInputsAsync(CancellationToken.None);
-                }
-                catch (Exception ex)
-                {
-                    AppendLog(Translations.Strings.ErrorLog + ex.Message);
-                    if (Settings.Default.VerboseErrors)
-                    {
-                        MessageBox.Show(Application.Current.MainWindow!, ex.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
-                    }
-                    return;
-                }
-
-                btnBrowse.IsEnabled = false;
-                SetEnabled(false);
-                SetActionButtonsEnabled(false);
-
-                SetImage("Images/ppOverheat.gif", true);
-                statusMessage.Text = Translations.Strings.StatusUpdating;
-                _cancellationTokenSource = new CancellationTokenSource();
-                UpdateActionButtons(true);
-
-                try
-                {
-                    await currentMerge.MergeAsync(_cancellationTokenSource.Token);
-                    Inputs.Clear();
-                    mergeProgress.SetStatus(Translations.Strings.StatusDone);
-                    SetImage("Images/ppHop.gif", true);
-                }
-                catch (Exception ex) when (ex is OperationCanceledException or TaskCanceledException && _cancellationTokenSource.IsCancellationRequested)
-                {
-                    mergeProgress.SetStatus(Translations.Strings.StatusCanceled);
-                    SetImage("Images/ppHop.gif", true);
-                }
-                catch (Exception ex)
-                {
-                    mergeProgress.SetStatus(Translations.Strings.StatusError);
-                    SetImage("Images/peepoSad.png", false);
-                    AppendLog(Translations.Strings.ErrorLog + ex.Message);
-                    if (Settings.Default.VerboseErrors)
-                    {
-                        MessageBox.Show(Application.Current.MainWindow!, ex.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
-                    }
-                }
-                btnBrowse.IsEnabled = true;
-                mergeProgress.ReportProgress(0);
-                _cancellationTokenSource.Dispose();
-                UpdateActionButtons(false);
-
-                GC.Collect();
-            }
-            catch (Exception ex)
-            {
-                AppendLog(Translations.Strings.ErrorLog + ex.Message);
-                if (Settings.Default.VerboseErrors)
-                {
-                    MessageBox.Show(Application.Current.MainWindow!, ex.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
-                }
             }
         }
 
@@ -511,6 +414,18 @@ namespace TwitchDownloaderWPF
                 _cancellationTokenSource.Cancel();
             }
             catch (ObjectDisposedException) { }
+        }
+
+        private void TabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (TabChat.IsSelected)
+            {
+                SplitBtnMerge.Content = Translations.Strings.MergeChats;
+            }
+            else
+            {
+                SplitBtnMerge.Content = Translations.Strings.MergeVideos;
+            }
         }
 
         private void radioJson_Checked(object sender, RoutedEventArgs e)
@@ -617,20 +532,15 @@ namespace TwitchDownloaderWPF
                 return;
             }
 
-            var index = Inputs.IndexOf(file);
+            var index = InputsChat.IndexOf(file);
             if (index < 0)
                 return;
 
-            Inputs.RemoveAt(index);
+            InputsChat.RemoveAt(index);
             DisplayTotalLength();
 
-            SetEnabled(Inputs.Count > 0);
-            SetActionButtonsEnabled(Inputs.Count >= 2);
-
-            if (index == 0)
-            {
-                await DisplayVideoInfoAsync();
-            }
+            SetEnabled(InputsChat.Count > 0);
+            SetActionButtonsEnabled(InputsChat.Count >= 2);
         }
 
         private async void BtnMoveInputUp_Click(object sender, RoutedEventArgs e)
@@ -640,16 +550,11 @@ namespace TwitchDownloaderWPF
                 return;
             }
 
-            var index = Inputs.IndexOf(file);
+            var index = InputsChat.IndexOf(file);
             if (index < 1)
                 return;
 
-            Inputs.Move(index, index - 1);
-
-            if (index == 1)
-            {
-                await DisplayVideoInfoAsync();
-            }
+            InputsChat.Move(index, index - 1);
         }
 
         private async void BtnMoveInputDown_Click(object sender, RoutedEventArgs e)
@@ -659,15 +564,26 @@ namespace TwitchDownloaderWPF
                 return;
             }
 
-            var index = Inputs.IndexOf(file);
-            if (index == -1 || index == Inputs.Count - 1)
+            var index = InputsChat.IndexOf(file);
+            if (index == -1 || index == InputsChat.Count - 1)
                 return;
 
-            Inputs.Move(index, index + 1);
+            InputsChat.Move(index, index + 1);
+        }
 
-            if (index == 0)
+        private void numDelayChat_ValueChanged(object sender, HandyControl.Data.FunctionEventArgs<double> e)
+        {
+            if (IsInitialized)
             {
-                await DisplayVideoInfoAsync();
+                numDelayVideo.Value = numDelayChat.Value;
+            }
+        }
+
+        private void numDelayVideo_ValueChanged(object sender, HandyControl.Data.FunctionEventArgs<double> e)
+        {
+            if (IsInitialized)
+            {
+                numDelayChat.Value = numDelayVideo.Value;
             }
         }
     }
