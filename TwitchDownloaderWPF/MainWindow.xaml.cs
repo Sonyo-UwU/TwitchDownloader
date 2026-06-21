@@ -25,11 +25,9 @@ namespace TwitchDownloaderWPF
         public static PageClipDownload pageClipDownload = new PageClipDownload();
         public static PageChatDownload pageChatDownload = new PageChatDownload();
         public static PageChatUpdate pageChatUpdate = new PageChatUpdate();
+        public static PageVodMerge pageChatMerge = new PageVodMerge();
         public static PageChatRender pageChatRender = new PageChatRender();
         public static PageQueue pageQueue = new PageQueue();
-
-        [GeneratedRegex("{crop_(?=(?:start|end)(?:_|}))")]
-        private static partial Regex OldCropParametersRegex { get; }
 
         public MainWindow()
         {
@@ -56,6 +54,11 @@ namespace TwitchDownloaderWPF
             Main.Content = pageChatUpdate;
         }
 
+        private void btnVodMerge_Click(object sender, RoutedEventArgs e)
+        {
+            Main.Content = pageChatMerge;
+        }
+
         private void btnChatRender_Click(object sender, RoutedEventArgs e)
         {
             Main.Content = pageChatRender;
@@ -73,12 +76,12 @@ namespace TwitchDownloaderWPF
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            Main.Content = pageVodDownload;
+            Main.Content = pageChatMerge;
 
             // Replace old crop parameters with new trim parameters
-            Settings.Default.TemplateVod  = OldCropParametersRegex.Replace(Settings.Default.TemplateVod , "{trim_");
-            Settings.Default.TemplateClip = OldCropParametersRegex.Replace(Settings.Default.TemplateClip, "{trim_");
-            Settings.Default.TemplateChat = OldCropParametersRegex.Replace(Settings.Default.TemplateChat, "{trim_");
+            Settings.Default.TemplateVod = Regex.Replace(Settings.Default.TemplateVod, "{crop_(?=(?:start|end)(?:_|}))", "{trim_");
+            Settings.Default.TemplateClip = Regex.Replace(Settings.Default.TemplateClip, "{crop_(?=(?:start|end)(?:_|}))", "{trim_");
+            Settings.Default.TemplateChat = Regex.Replace(Settings.Default.TemplateChat, "{crop_(?=(?:start|end)(?:_|}))", "{trim_");
             Settings.Default.Save();
 
             // Flash the window taskbar icon if it is not in the foreground. This is to mitigate a problem where
@@ -201,6 +204,7 @@ namespace TwitchDownloaderWPF
             ((TextBlock)btnClipDownload.Content).TextDecorations = null;
             ((TextBlock)btnChatDownload.Content).TextDecorations = null;
             ((TextBlock)btnChatUpdate.Content).TextDecorations = null;
+            ((TextBlock)btnVodMerge.Content).TextDecorations = null;
             ((TextBlock)btnChatRender.Content).TextDecorations = null;
             ((TextBlock)btnQueue.Content).TextDecorations = null;
 
@@ -220,6 +224,10 @@ namespace TwitchDownloaderWPF
             else if (ReferenceEquals(newPage, pageChatUpdate))
             {
                 ((TextBlock)btnChatUpdate.Content).TextDecorations = TextDecorations.Underline;
+            }
+            else if (ReferenceEquals(newPage, pageChatMerge))
+            {
+                ((TextBlock)btnVodMerge.Content).TextDecorations = TextDecorations.Underline;
             }
             else if (ReferenceEquals(newPage, pageChatRender))
             {
