@@ -43,6 +43,11 @@ namespace TwitchDownloaderCore
                 throw new NotSupportedException("Only JSON chat files can be used as update input. HTML and Text support may come in the future.");
             }
 
+            if (InputChatRoots.Length == 0)
+            {
+                await ValidateInputsAsync(cancellationToken);
+            }
+
             var outputChatRoot = InitChatRoot();
             _progress.SetStatus("Combining");
 
@@ -204,13 +209,18 @@ namespace TwitchDownloaderCore
             }
         }
 
-        public async Task ParseJsonAsync(CancellationToken cancellationToken = new())
+        public async Task ValidateInputsAsync(CancellationToken cancellationToken = new())
         {
+            if (mergeOptions.InputFiles.Length < 2)
+            {
+                throw new InvalidOperationException("Input count must be at least 2.");
+            }
+
             var chatRoots = await Task.WhenAll(mergeOptions.InputFiles.Select(async file => await ChatJson.DeserializeAsync(file, true, false, true, cancellationToken)));
             int streamer = chatRoots[0].streamer.id;
             if (chatRoots.Skip(1).Any(c => c.streamer.id != streamer))
             {
-                throw new NotSupportedException("Merging chats from different streamers is not supported");
+                throw new NotSupportedException("Merging chats from different streamers is currently not supported.");
             }
 
             InputChatRoots = chatRoots;

@@ -17,7 +17,7 @@ namespace TwitchDownloaderCLI.Modes
             var mergeOptions = GetMergeOptions(inputOptions, collisionHandler, progress);
 
             var chatMerger = new ChatMerger(mergeOptions, progress);
-            chatMerger.ParseJsonAsync().Wait();
+            chatMerger.ValidateInputsAsync().Wait();
             chatMerger.MergeAsync(new CancellationToken()).Wait();
         }
 
