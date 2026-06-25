@@ -20,7 +20,7 @@ namespace TwitchDownloaderWPF
     {
         // This file is absolutely atrocious, but fixing it would mean rewriting the entire GUI in a more abstract form
 
-        private readonly List<TaskData> _dataList;
+        private readonly IList<TaskData> _dataList;
         private readonly Page _parentPage;
 
         private bool CheckRenderWasChecked = false;
@@ -109,26 +109,39 @@ namespace TwitchDownloaderWPF
             }
         }
 
-        public WindowQueueOptions(List<TaskData> dataList)
+        public WindowQueueOptions(IList<TaskData> dataList)
         {
             _dataList = dataList;
             InitializeComponent();
 
             textFolder.Text = Settings.Default.QueueFolder;
 
-            if (_dataList.Any(x => !x.Id.All(char.IsDigit)))
+            if (_dataList.All(x => !x.IsDownload))
             {
-                ComboPreferredQuality.Items.Insert(1, new ComboBoxItem { Content = "Source Portrait" });
-                ComboPreferredQuality.Items.Add(new ComboBoxItem { Content = "Worst Portrait" });
-            }
-
-            if (_dataList.Any(x => x.Id.All(char.IsDigit)))
-            {
-                ComboPreferredQuality.Items.Add(new ComboBoxItem { Content = "Audio Only" });
+                // No download
+                VideoDownloadSettings.Visibility = Visibility.Collapsed;
+                checkChat.Visibility = Visibility.Collapsed;
+                ChatDownloadSettings.Visibility = Visibility.Collapsed;
             }
             else
             {
-                checkDelayVideo.Visibility = Visibility.Collapsed;
+                if (_dataList.Any(x => x.IsDownload && !x.Id.All(char.IsDigit)))
+                {
+                    // At least one clip download
+                    ComboPreferredQuality.Items.Insert(1, new ComboBoxItem { Content = "Source Portrait" });
+                    ComboPreferredQuality.Items.Add(new ComboBoxItem { Content = "Worst Portrait" });
+                }
+
+                if (_dataList.Any(x => x.IsDownload && x.Id.All(char.IsDigit)))
+                {
+                    // At least one vod download
+                    ComboPreferredQuality.Items.Add(new ComboBoxItem { Content = "Audio Only" });
+                }
+                else
+                {
+                    // No vod download
+                    checkDelayVideo.Visibility = Visibility.Collapsed;
+                }
             }
 
             var preferredQuality = Settings.Default.PreferredQuality;
@@ -612,26 +625,46 @@ namespace TwitchDownloaderWPF
 
             foreach (var taskData in _dataList)
             {
-                if (checkVideo.IsChecked.GetValueOrDefault())
+                if (taskData.IsDownload)
                 {
-                    if (taskData.Id.All(char.IsDigit))
-                    {
-                        EnqueueVodDownload(taskData, folderPath);
-                    }
-                    else
-                    {
-                        EnqueueClipDownload(taskData, folderPath);
-                    }
+                    EnqueueDownloadTask(taskData, folderPath);
                 }
-
-                if (checkChat.IsChecked.GetValueOrDefault())
+                else
                 {
-                    EnqueueChatDownload(taskData, folderPath);
+                    EnqueueLocalTask(taskData, folderPath);
                 }
             }
 
             this.DialogResult = true;
             this.Close();
+        }
+
+        private void EnqueueDownloadTask(TaskData taskData, string folderPath)
+        {
+            if (checkVideo.IsChecked.GetValueOrDefault())
+            {
+                if (taskData.Id.All(char.IsDigit))
+                {
+                    EnqueueVodDownload(taskData, folderPath);
+                }
+                else
+                {
+                    EnqueueClipDownload(taskData, folderPath);
+                }
+            }
+
+            if (checkChat.IsChecked.GetValueOrDefault())
+            {
+                EnqueueChatDownload(taskData, folderPath);
+            }
+        }
+
+        private void EnqueueLocalTask(TaskData taskData, string folderPath)
+        {
+            if (checkRender.IsChecked.GetValueOrDefault())
+            {
+                EnqueueChatRender(taskData, folderPath);
+            }
         }
 
         private void EnqueueVodDownload(TaskData taskData, string folderPath)
@@ -786,34 +819,52 @@ namespace TwitchDownloaderWPF
                 PageQueue.taskList.Add(downloadTask);
             }
 
-            if (checkRender.IsChecked.GetValueOrDefault() && downloadOptions.DownloadFormat == ChatFormat.Json)
+            if (checkRender.IsChecked.GetValueOrDefault())
             {
-                ChatRenderOptions renderOptions =
-                            MainWindow.pageChatRender.GetOptions(Path.ChangeExtension(downloadOptions.Filename.Replace(".gz", ""), '.' + MainWindow.pageChatRender.comboFormat.Text.ToLower()));
-                if (renderOptions.OutputFile.Trim() == downloadOptions.Filename.Trim())
-                {
-                    //Just in case VOD and chat paths are the same. Like the previous defaults
-                    renderOptions.OutputFile = Path.ChangeExtension(downloadOptions.Filename.Replace(".gz", ""), " - CHAT." + MainWindow.pageChatRender.comboFormat.Text.ToLower());
-                }
-                renderOptions.InputFile = downloadOptions.Filename;
-                renderOptions.FileCollisionCallback = HandleFileCollisionCallback;
+                EnqueueChatRender(taskData, folderPath, downloadTask);
+            }
+        }
 
-                ChatRenderTask renderTask = new ChatRenderTask
+        private void EnqueueChatRender(TaskData taskData, string folderPath, TwitchTask dependantTask = null)
+        {
+            string filePath = Path.Combine(folderPath,
+                FilenameService.GetFilename(
+                    Settings.Default.TemplateChat,
+                    taskData.Title,
+                    taskData.Id,
+                    taskData.Time,
+                    taskData.StreamerName,
+                    taskData.StreamerId,
+                    TimeSpan.Zero,
+                    TimeSpan.FromSeconds(taskData.Length),
+                    TimeSpan.FromSeconds(taskData.Length),
+                    taskData.Views,
+                    taskData.Game,
+                    taskData.ClipperName,
+                    taskData.ClipperId) +
+                "." + MainWindow.pageChatRender.comboFormat.SelectedItem.ToString()!.ToLower());
+            ChatRenderOptions renderOptions = MainWindow.pageChatRender.GetOptions(filePath);
+            renderOptions.InputFile = dependantTask is null ? taskData.FilePath : dependantTask.OutputFile;
+            renderOptions.FileCollisionCallback = HandleFileCollisionCallback;
+
+            ChatRenderTask renderTask = new ChatRenderTask
+            {
+                DownloadOptions = renderOptions,
+                Info =
                 {
-                    DownloadOptions = renderOptions,
-                    Info =
-                    {
-                        Title = taskData.Title,
-                        Thumbnail = taskData.Thumbnail
-                    },
-                    DependantTask = downloadTask
-                };
+                    Title = taskData.Title,
+                    Thumbnail = taskData.Thumbnail
+                },
+                DependantTask = dependantTask
+            };
+            if (dependantTask is not null)
+            {
                 renderTask.ChangeStatus(TwitchTaskStatus.Waiting);
+            }
 
-                lock (PageQueue.TaskLock)
-                {
-                    PageQueue.taskList.Add(renderTask);
-                }
+            lock (PageQueue.TaskLock)
+            {
+                PageQueue.taskList.Add(renderTask);
             }
         }
 
@@ -870,7 +921,7 @@ namespace TwitchDownloaderWPF
             CheckFfzEmbed.IsEnabled = embedEnabled;
             CheckStvEmbed.IsEnabled = embedEnabled;
 
-            checkRender.IsEnabled = checkChat.IsChecked.GetValueOrDefault() && radioJson.IsChecked.GetValueOrDefault() && _parentPage is not PageChatRender;
+            checkRender.IsEnabled = ((checkChat.IsChecked.GetValueOrDefault() && radioJson.IsChecked.GetValueOrDefault()) || _dataList is null || _dataList.Any(x => !x.IsDownload)) && _parentPage is not PageChatRender;
         }
 
         private void UpdateEnabledEvent(object sender, RoutedEventArgs e)

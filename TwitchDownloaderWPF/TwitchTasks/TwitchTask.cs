@@ -1,3 +1,4 @@
+using JetBrains.Annotations;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Threading;
@@ -11,7 +12,9 @@ namespace TwitchDownloaderWPF.TwitchTasks
 {
     public abstract class TwitchTask : INotifyPropertyChanged
     {
+        [UsedImplicitly(Reason = "Used by PageQueue bindings")]
         public event PropertyChangedEventHandler PropertyChanged;
+
         public TaskData Info { get; } = new();
 
         public int Progress

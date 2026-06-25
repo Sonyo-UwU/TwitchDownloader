@@ -1,9 +1,12 @@
-﻿using System.Windows.Media;
+﻿using JetBrains.Annotations;
+using System.Windows.Media;
 
 namespace TwitchDownloaderWPF.TwitchTasks
 {
     public class TaskData
     {
+        public string FilePath { get; set; } = null;
+        public bool IsDownload => FilePath is null;
         public string Id { get; set; }
         public string StreamerName { get; set; }
         public string StreamerId { get; set; }
@@ -15,6 +18,8 @@ namespace TwitchDownloaderWPF.TwitchTasks
         public int Length { get; set; }
         public int Views { get; set; }
         public string Game { get; set; }
+
+        [UsedImplicitly(Reason = "Used by PageQueue bindings")]
         public string LengthFormatted
         {
             get
