@@ -10,10 +10,9 @@ using TwitchDownloaderCore.Models;
 using TwitchDownloaderCore.Options;
 using TwitchDownloaderCore.Services;
 using TwitchDownloaderCore.Tools;
-using TwitchDownloaderCore.TwitchObjects.Gql;
 using TwitchDownloaderWPF.Models;
 using TwitchDownloaderWPF.Properties;
-using TwitchDownloaderWPF.Services;
+using TwitchDownloaderWPF.TwitchTasks;
 using TwitchDownloaderWPF.Utils;
 using WpfAnimatedGif;
 
@@ -25,15 +24,7 @@ namespace TwitchDownloaderWPF
     /// </summary>
     public partial class PageChatDownload : Page
     {
-        public DownloadType downloadType;
-        public string downloadId;
-        public string streamerId;
-        public string clipper;
-        public string clipperId;
-        public DateTime currentVideoTime;
-        public TimeSpan vodLength;
-        public int viewCount;
-        public string game;
+        private TaskData taskData;
         private CancellationTokenSource _cancellationTokenSource;
 
         public PageChatDownload()
@@ -121,118 +112,73 @@ namespace TwitchDownloaderWPF
                 return;
             }
             btnGetInfo.IsEnabled = false;
-            downloadId = id;
-            downloadType = id.All(char.IsDigit) ? DownloadType.Video : DownloadType.Clip;
 
             try
             {
-                if (downloadType == DownloadType.Video)
+                taskData = await TaskData.FromVideoIdAsync(id);
+
+                imgThumbnail.Source = taskData.Thumbnail;
+
+                textTitle.Text = taskData.Title;
+                textStreamer.Text = taskData.StreamerName;
+                textCreatedAt.Text = Settings.Default.UTCVideoTime ? taskData.Time.ToString(CultureInfo.CurrentCulture) : taskData.Time.ToLocalTime().ToString(CultureInfo.CurrentCulture);
+
+                var urlTimeCodeMatch = TwitchRegex.UrlTimeCode.Match(textUrl.Text);
+                if (urlTimeCodeMatch.Success)
                 {
-                    GqlVideoResponse videoInfo = await TwitchHelper.GetVideoInfo(long.Parse(downloadId));
-
-                    var thumbUrl = videoInfo.data.video.thumbnailURLs.FirstOrDefault();
-                    if (!ThumbnailService.TryGetThumb(thumbUrl, out var image))
-                    {
-                        AppendLog(Translations.Strings.ErrorLog + Translations.Strings.UnableToFindThumbnail);
-                        _ = ThumbnailService.TryGetThumb(ThumbnailService.THUMBNAIL_MISSING_URL, out image);
-                    }
-                    imgThumbnail.Source = image;
-
-                    vodLength = TimeSpan.FromSeconds(videoInfo.data.video.lengthSeconds);
-                    textTitle.Text = videoInfo.data.video.title;
-                    textStreamer.Text = videoInfo.data.video.owner?.displayName ?? Translations.Strings.UnknownUser;
-                    var videoTime = videoInfo.data.video.createdAt;
-                    textCreatedAt.Text = Settings.Default.UTCVideoTime ? videoTime.ToString(CultureInfo.CurrentCulture) : videoTime.ToLocalTime().ToString(CultureInfo.CurrentCulture);
-                    currentVideoTime = Settings.Default.UTCVideoTime ? videoTime : videoTime.ToLocalTime();
-                    streamerId = videoInfo.data.video.owner?.id;
-                    clipper = null;
-                    clipperId = null;
-                    viewCount = videoInfo.data.video.viewCount;
-                    game = videoInfo.data.video.game?.displayName ?? Translations.Strings.UnknownGame;
-
-                    var urlTimeCodeMatch = TwitchRegex.UrlTimeCode.Match(textUrl.Text);
-                    if (urlTimeCodeMatch.Success)
-                    {
-                        var time = UrlTimeCode.Parse(urlTimeCodeMatch.ValueSpan);
-                        CheckTrimStart.IsChecked = true;
-                        numStartHour.Value = (int)time.TotalHours;
-                        numStartMinute.Value = time.Minutes;
-                        numStartSecond.Value = time.Seconds;
-                    }
-                    else
-                    {
-                        numStartHour.Value = 0;
-                        numStartMinute.Value = 0;
-                        numStartSecond.Value = 0;
-                    }
-
-                    if (vodLength > TimeSpan.Zero)
-                    {
-                        numStartHour.Maximum = (int)vodLength.TotalHours;
-                        numEndHour.Maximum = (int)vodLength.TotalHours;
-                    }
-                    else
-                    {
-                        numStartHour.Maximum = 48;
-                        numEndHour.Maximum = 48;
-                    }
-
-                    numEndHour.Value = (int)vodLength.TotalHours;
-                    numEndMinute.Value = vodLength.Minutes;
-                    numEndSecond.Value = vodLength.Seconds;
-                    labelLength.Text = vodLength.ToString("c");
-                    SetEnabled(true);
+                    var time = UrlTimeCode.Parse(urlTimeCodeMatch.ValueSpan);
+                    CheckTrimStart.IsChecked = true;
+                    numStartHour.Value = (int)time.TotalHours;
+                    numStartMinute.Value = time.Minutes;
+                    numStartSecond.Value = time.Seconds;
                 }
-                else if (downloadType == DownloadType.Clip)
+                else
                 {
-                    string clipId = downloadId;
-                    GqlClipResponse clipInfo = await TwitchHelper.GetClipInfo(clipId);
-
-                    var thumbUrl = clipInfo.data.clip.thumbnailURL;
-                    if (!ThumbnailService.TryGetThumb(thumbUrl, out var image))
-                    {
-                        AppendLog(Translations.Strings.ErrorLog + Translations.Strings.UnableToFindThumbnail);
-                        _ = ThumbnailService.TryGetThumb(ThumbnailService.THUMBNAIL_MISSING_URL, out image);
-                    }
-                    imgThumbnail.Source = image;
-
-                    vodLength = TimeSpan.FromSeconds(clipInfo.data.clip.durationSeconds);
-                    textStreamer.Text = clipInfo.data.clip.broadcaster?.displayName ?? Translations.Strings.UnknownUser;
-                    var clipCreatedAt = clipInfo.data.clip.createdAt;
-                    textCreatedAt.Text = Settings.Default.UTCVideoTime ? clipCreatedAt.ToString(CultureInfo.CurrentCulture) : clipCreatedAt.ToLocalTime().ToString(CultureInfo.CurrentCulture);
-                    currentVideoTime = Settings.Default.UTCVideoTime ? clipCreatedAt : clipCreatedAt.ToLocalTime();
-                    textTitle.Text = clipInfo.data.clip.title;
-                    streamerId = clipInfo.data.clip.broadcaster?.id;
-                    clipper = clipInfo.data.clip.curator?.displayName ?? Translations.Strings.UnknownUser;
-                    clipperId = clipInfo.data.clip.curator?.id;
-                    labelLength.Text = vodLength.ToString("c");
-                    SetEnabled(true);
-
-                    numStartHour.Maximum = 0;
                     numStartHour.Value = 0;
-                    numStartMinute.Maximum = vodLength.Minutes;
                     numStartMinute.Value = 0;
                     numStartSecond.Value = 0;
-
-                    numEndHour.Maximum = 0;
-                    numEndHour.Value = 0;
-                    numEndMinute.Maximum = vodLength.Minutes;
-                    numEndMinute.Value = vodLength.Minutes;
-                    numEndSecond.Value = vodLength.Seconds;
                 }
 
-                btnGetInfo.IsEnabled = true;
+                numStartHour.Maximum = 48;
+                numEndHour.Maximum = 48;
+                numStartMinute.Maximum = 59;
+                numEndMinute.Maximum = 59;
+                numStartSecond.Maximum = 59;
+                numEndSecond.Maximum = 59;
+
+                if (taskData.Length > TimeSpan.Zero)
+                {
+                    numStartHour.Maximum = taskData.Length.Hours;
+                    numEndHour.Maximum = taskData.Length.Hours;
+                    if (taskData.Length.Hours == 0)
+                    {
+                        numStartMinute.Maximum = taskData.Length.Minutes;
+                        numEndMinute.Maximum = taskData.Length.Minutes;
+                        if (taskData.Length.Minutes == 0)
+                        {
+                            numStartSecond.Maximum = taskData.Length.Seconds;
+                            numEndSecond.Maximum = taskData.Length.Seconds;
+                        }
+                    }
+                }
+
+                numEndHour.Value = (int)taskData.Length.TotalHours;
+                numEndMinute.Value = taskData.Length.Minutes;
+                numEndSecond.Value = taskData.Length.Seconds;
+                labelLength.Text = taskData.Length.ToString("c");
+                SetEnabled(true);
             }
             catch (Exception ex)
             {
                 MessageBox.Show(Application.Current.MainWindow!, Translations.Strings.UnableToGetInfoMessage, Translations.Strings.UnableToGetInfo, MessageBoxButton.OK, MessageBoxImage.Error);
                 AppendLog(Translations.Strings.ErrorLog + ex.Message);
-                btnGetInfo.IsEnabled = true;
                 if (Settings.Default.VerboseErrors)
                 {
                     MessageBox.Show(Application.Current.MainWindow!, ex.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
+
+            btnGetInfo.IsEnabled = true;
         }
 
         private void UpdateActionButtons(bool isDownloading)
@@ -325,7 +271,7 @@ namespace TwitchDownloaderWPF
             else if (radioTimestampNone.IsChecked == true)
                 options.TimeFormat = TimestampFormat.None;
 
-            options.Id = downloadId;
+            options.Id = taskData.Id;
             options.EmbedData = checkEmbed.IsChecked.GetValueOrDefault();
             options.BttvEmotes = checkBttvEmbed.IsChecked.GetValueOrDefault();
             options.FfzEmotes = checkFfzEmbed.IsChecked.GetValueOrDefault();
@@ -523,10 +469,10 @@ namespace TwitchDownloaderWPF
 
             var saveFileDialog = new SaveFileDialog
             {
-                FileName = FilenameService.GetFilename(Settings.Default.TemplateChat, textTitle.Text, downloadId, currentVideoTime, textStreamer.Text, streamerId,
+                FileName = FilenameService.GetFilename(Settings.Default.TemplateChat, textTitle.Text, taskData.Id, taskData.Time, textStreamer.Text, taskData.StreamerId,
                     CheckTrimStart.IsChecked == true ? new TimeSpan((int)numStartHour.Value, (int)numStartMinute.Value, (int)numStartSecond.Value) : TimeSpan.Zero,
-                    CheckTrimEnd.IsChecked == true ? new TimeSpan((int)numEndHour.Value, (int)numEndMinute.Value, (int)numEndSecond.Value) : vodLength,
-                    vodLength, viewCount, game, clipper, clipperId)
+                    CheckTrimEnd.IsChecked == true ? new TimeSpan((int)numEndHour.Value, (int)numEndMinute.Value, (int)numEndSecond.Value) : taskData.Length,
+                    taskData.Length, taskData.Views, taskData.Game, taskData.ClipperName, taskData.ClipperId)
             };
 
             if (radioJson.IsChecked == true)
@@ -630,7 +576,10 @@ namespace TwitchDownloaderWPF
 
         private void MenuItemEnqueue_Click(object sender, RoutedEventArgs e)
         {
-            var queueOptions = new WindowQueueOptions(this)
+            var queueOptions = new WindowQueueOptions([taskData],
+                forceChatDownload: true,
+                trimStart: CheckTrimStart.IsChecked.GetValueOrDefault() ? new TimeSpan((int)numStartHour.Value, (int)numStartMinute.Value, (int)numStartSecond.Value) : null,
+                trimEnd: CheckTrimEnd.IsChecked.GetValueOrDefault() ? new TimeSpan((int)numEndHour.Value, (int)numEndMinute.Value, (int)numEndSecond.Value) : null)
             {
                 Owner = Application.Current.MainWindow,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner

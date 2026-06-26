@@ -1,10 +1,67 @@
 ﻿using JetBrains.Annotations;
 using System.Windows.Media;
+using TwitchDownloaderCore;
+using TwitchDownloaderWPF.Properties;
+using TwitchDownloaderWPF.Services;
 
 namespace TwitchDownloaderWPF.TwitchTasks
 {
     public class TaskData
     {
+        public static async Task<TaskData> FromVideoIdAsync(string id)
+        {
+            if (id.All(char.IsDigit))
+            {
+                var res = await TwitchHelper.GetVideoInfo(long.Parse(id));
+                var videoInfo = res.data.video;
+
+                var thumbUrl = videoInfo.thumbnailURLs.FirstOrDefault();
+                if (!ThumbnailService.TryGetThumb(thumbUrl, out var thumbnail))
+                {
+                    _ = ThumbnailService.TryGetThumb(ThumbnailService.THUMBNAIL_MISSING_URL, out thumbnail);
+                }
+
+                return new TaskData
+                {
+                    Id = id,
+                    Thumbnail = thumbnail,
+                    Title = videoInfo.title,
+                    StreamerName = videoInfo.owner?.displayName ?? Translations.Strings.UnknownUser,
+                    StreamerId = videoInfo.owner?.id,
+                    Time = Settings.Default.UTCVideoTime ? videoInfo.createdAt : videoInfo.createdAt.ToLocalTime(),
+                    Views = videoInfo.viewCount,
+                    Game = videoInfo.game?.displayName ?? Translations.Strings.UnknownGame,
+                    Length = TimeSpan.FromSeconds(videoInfo.lengthSeconds)
+                };
+            }
+            else
+            {
+                var res = await TwitchHelper.GetClipInfo(id);
+                var clipInfo = res.data.clip;
+
+                var thumbUrl = clipInfo.thumbnailURL;
+                if (!ThumbnailService.TryGetThumb(thumbUrl, out var thumbnail))
+                {
+                    _ = ThumbnailService.TryGetThumb(ThumbnailService.THUMBNAIL_MISSING_URL, out thumbnail);
+                }
+
+                return new TaskData
+                {
+                    Id = id,
+                    Thumbnail = thumbnail,
+                    Title = clipInfo.title,
+                    StreamerName = clipInfo.broadcaster?.displayName ?? Translations.Strings.UnknownUser,
+                    StreamerId = clipInfo.broadcaster?.id,
+                    ClipperName = clipInfo.curator?.displayName ?? Translations.Strings.UnknownUser,
+                    ClipperId = clipInfo.curator?.id,
+                    Time = Settings.Default.UTCVideoTime ? clipInfo.createdAt : clipInfo.createdAt.ToLocalTime(),
+                    Views = clipInfo.viewCount,
+                    Game = clipInfo.game?.displayName ?? Translations.Strings.UnknownGame,
+                    Length = TimeSpan.FromSeconds(clipInfo.durationSeconds)
+                };
+            }
+        }
+
         public string FilePath { get; set; } = null;
         public bool IsDownload => FilePath is null;
         public string Id { get; set; }
