@@ -1348,6 +1348,15 @@ namespace TwitchDownloaderWPF.Translations {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Incompatible Trims.
+        /// </summary>
+        public static string IncompatibleTrims {
+            get {
+                return ResourceManager.GetString("IncompatibleTrims", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Increase Username Readability:.
         /// </summary>
         public static string IncreaseUsernameReadability {
@@ -2419,6 +2428,33 @@ namespace TwitchDownloaderWPF.Translations {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Trim End (relative).
+        /// </summary>
+        public static string TrimEndFull {
+            get {
+                return ResourceManager.GetString("TrimEndFull", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to All ({0}) inputs are incompatible with your trim settings or are clips, which can&apos;t be trimmed..
+        /// </summary>
+        public static string TrimErrorIncompatible {
+            get {
+                return ResourceManager.GetString("TrimErrorIncompatible", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to All ({0}) inputs are incompatible with your trim settings..
+        /// </summary>
+        public static string TrimErrorIncompatibleAndClips {
+            get {
+                return ResourceManager.GetString("TrimErrorIncompatibleAndClips", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Start.
         /// </summary>
         public static string TrimStart {
@@ -2428,11 +2464,47 @@ namespace TwitchDownloaderWPF.Translations {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Trim Start.
+        /// </summary>
+        public static string TrimStartFull {
+            get {
+                return ResourceManager.GetString("TrimStartFull", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Trim:.
         /// </summary>
         public static string TrimVideo {
             get {
                 return ResourceManager.GetString("TrimVideo", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Some ({0}) inputs are clips, which can&apos;t be trimmed..
+        /// </summary>
+        public static string TrimWarningClips {
+            get {
+                return ResourceManager.GetString("TrimWarningClips", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Some ({0}) inputs are not compatible with your trim settings. If you continue, they won&apos;t be trimmed at all..
+        /// </summary>
+        public static string TrimWarningIncompatible {
+            get {
+                return ResourceManager.GetString("TrimWarningIncompatible", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Some ({0}) inputs are incompatible with your trim settings or are clips, which can&apos;t be trimmed. If you continue, they won&apos;t be trimmed at all..
+        /// </summary>
+        public static string TrimWarningIncompatibleAndClips {
+            get {
+                return ResourceManager.GetString("TrimWarningIncompatibleAndClips", resourceCulture);
             }
         }
         

@@ -75,7 +75,19 @@
                 <CheckBox x:Name="checkDelayChat" Content="{lex:Loc DelayDownload}" HorizontalAlignment="Left" Margin="5,5,0,0" VerticalAlignment="Top" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}" IsEnabled="False" />
             </StackPanel>
             <CheckBox x:Name="checkRender" IsEnabled="False" Content="{lex:Loc RenderChat}" HorizontalAlignment="Left" Margin="0,8,0,0" VerticalAlignment="Top" IsEnabledChanged="checkRender_IsEnabledChanged" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}"/>
+            <CheckBox x:Name="CheckTrimStart" Content="{lex:Loc TrimStartFull}" Checked="UpdateEnabledEvent" Unchecked="UpdateEnabledEvent" HorizontalAlignment="Left" Margin="0,8,0,0" VerticalAlignment="Top" BorderBrush="{DynamicResource AppElementBorder}"/>
+            <StackPanel x:Name="TrimStartSettings" Orientation="Horizontal" IsEnabled="False" Margin="22,5,0,0">
+                <hc:NumericUpDown Margin="0,0,0,0" Minimum="0" Maximum="48" Value="0" x:Name="NumTrimStartHour" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}" />
+                <hc:NumericUpDown Margin="3,0,0,0" Minimum="0" Maximum="59" Value="0" x:Name="NumTrimStartMinute" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}" />
+                <hc:NumericUpDown Margin="3,0,0,0" Minimum="0" Maximum="59" Value="0" x:Name="NumTrimStartSecond" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}" />
+            </StackPanel>
+            <CheckBox x:Name="CheckTrimEnd" Content="{lex:Loc TrimEndFull}" Checked="UpdateEnabledEvent" Unchecked="UpdateEnabledEvent" HorizontalAlignment="Left" Margin="0,8,0,0" VerticalAlignment="Top" BorderBrush="{DynamicResource AppElementBorder}"/>
+            <StackPanel x:Name="TrimEndSettings" Orientation="Horizontal" IsEnabled="False" Margin="22,5,0,0">
+                <hc:NumericUpDown Margin="0,0,0,0" Minimum="0" Maximum="48" Value="0" x:Name="NumTrimEndHour" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}" />
+                <hc:NumericUpDown Margin="3,0,0,0" Minimum="0" Maximum="59" Value="0" x:Name="NumTrimEndMinute" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}" />
+                <hc:NumericUpDown Margin="3,0,0,0" Minimum="0" Maximum="59" Value="0" x:Name="NumTrimEndSecond" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}" />
+            </StackPanel>
         </StackPanel>
-        <Button x:Name="btnQueue" DockPanel.Dock="Bottom" Content="{lex:Loc AddToQueue}" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,-10,0,0" MinWidth="105" Height="45" Click="btnQueue_Click" Background="{DynamicResource ActionButtonBackground}" Foreground="{DynamicResource ActionButtonText}" BorderBrush="{DynamicResource ActionButtonBorder}" VerticalContentAlignment="Center" UseLayoutRounding="False"/>
+        <Button x:Name="btnQueue" DockPanel.Dock="Bottom" Content="{lex:Loc AddToQueue}" HorizontalAlignment="Center" VerticalAlignment="Bottom" MinWidth="105" Height="45" Click="btnQueue_Click" Background="{DynamicResource ActionButtonBackground}" Foreground="{DynamicResource ActionButtonText}" BorderBrush="{DynamicResource ActionButtonBorder}" VerticalContentAlignment="Center" UseLayoutRounding="False"/>
     </DockPanel>
 </Window>

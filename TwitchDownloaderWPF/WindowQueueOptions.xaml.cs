@@ -1,4 +1,5 @@
 ﻿using Microsoft.Win32;
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -131,6 +132,15 @@ namespace TwitchDownloaderWPF
                     // All download
                     checkChatUpdate.Visibility = Visibility.Collapsed;
                     CheckReplaceEmbeds.Visibility = Visibility.Collapsed;
+
+                    if (_dataList.All(x => !x.Id.All(char.IsDigit)))
+                    {
+                        // All clip download
+                        CheckTrimStart.Visibility = Visibility.Collapsed;
+                        TrimStartSettings.Visibility = Visibility.Collapsed;
+                        CheckTrimEnd.Visibility = Visibility.Collapsed;
+                        TrimEndSettings.Visibility = Visibility.Collapsed;
+                    }
                 }
 
                 if (_dataList.Any(x => x.IsDownload && !x.Id.All(char.IsDigit)))
@@ -631,6 +641,11 @@ namespace TwitchDownloaderWPF
                 }
             }
 
+            if (!ValidateTrims())
+            {
+                return;
+            }
+
             foreach (var taskData in _dataList)
             {
                 if (taskData.IsDownload)
@@ -689,8 +704,10 @@ namespace TwitchDownloaderWPF
                 Id = long.Parse(taskData.Id),
                 Quality = (ComboPreferredQuality.SelectedItem as ComboBoxItem)?.Content as string,
                 FfmpegPath = "ffmpeg",
-                TrimBeginning = false,
-                TrimEnding = false,
+                TrimBeginning = CheckTrimStart.IsChecked.GetValueOrDefault(),
+                TrimBeginningTime = new TimeSpan((int)NumTrimStartHour.Value, (int)NumTrimStartMinute.Value, (int)NumTrimStartSecond.Value),
+                TrimEnding = CheckTrimEnd.IsChecked.GetValueOrDefault(),
+                TrimEndingTime = TimeSpan.FromSeconds(taskData.Length - GetTrimEndSeconds()),
                 DownloadThreads = Settings.Default.VodDownloadThreads,
                 ThrottleKib = Settings.Default.DownloadThrottleEnabled
                                 ? Settings.Default.MaximumBandwidthKib
@@ -786,8 +803,10 @@ namespace TwitchDownloaderWPF
                 StvEmotes = CheckStvEmbed.IsChecked.GetValueOrDefault(),
                 TimeFormat = TimestampFormat.Relative,
                 Id = taskData.Id,
-                TrimBeginning = false,
-                TrimEnding = false,
+                TrimBeginning = CheckTrimStart.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit), // Clips can't be trimmed
+                TrimBeginningTime = GetTrimStartSeconds(),
+                TrimEnding = CheckTrimEnd.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit),
+                TrimEndingTime = taskData.Length - GetTrimEndSeconds(),
                 FileCollisionCallback = HandleFileCollisionCallback,
                 DelayDownload = checkDelayChat.IsChecked.GetValueOrDefault(),
                 DownloadThreads = Settings.Default.ChatDownloadThreads
@@ -850,8 +869,10 @@ namespace TwitchDownloaderWPF
                 StvEmotes = CheckStvEmbed.IsChecked.GetValueOrDefault(),
                 TextTimestampFormat = TimestampFormat.Relative,
                 InputFile = taskData.FilePath,
-                TrimBeginning = false,
-                TrimEnding = false,
+                TrimBeginning = CheckTrimStart.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit), // Clips can't be trimmed
+                TrimBeginningTime = GetTrimStartSeconds(),
+                TrimEnding = CheckTrimEnd.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit),
+                TrimEndingTime = taskData.Length - GetTrimEndSeconds(),
                 FileCollisionCallback = HandleFileCollisionCallback
             };
             if (radioJson.IsChecked == true)
@@ -923,6 +944,16 @@ namespace TwitchDownloaderWPF
             renderOptions.InputFile = dependantTask is null ? taskData.FilePath : dependantTask.OutputFile;
             renderOptions.FileCollisionCallback = HandleFileCollisionCallback;
 
+            // No need to override if dependant task is already trimmed
+            if (dependantTask is null && CheckTrimStart.IsChecked.GetValueOrDefault())
+            {
+                renderOptions.StartOverride = GetTrimStartSeconds();
+            }
+            if (dependantTask is null && CheckTrimEnd.IsChecked.GetValueOrDefault())
+            {
+                renderOptions.EndOverride = GetTrimEndSeconds();
+            }
+
             ChatRenderTask renderTask = new ChatRenderTask
             {
                 DownloadOptions = renderOptions,
@@ -942,6 +973,91 @@ namespace TwitchDownloaderWPF
             {
                 PageQueue.taskList.Add(renderTask);
             }
+        }
+
+        private bool ValidateTrims()
+        {
+            var startSeconds = CheckTrimStart.IsChecked.GetValueOrDefault() ? GetTrimStartSeconds() : 0;
+            var endSeconds = CheckTrimEnd.IsChecked.GetValueOrDefault() ? GetTrimEndSeconds() : 0;
+
+            int incompatibleCount = 0;
+            foreach (var taskData in _dataList)
+            {
+                if (startSeconds + endSeconds >= taskData.Length)
+                {
+                    incompatibleCount++;
+                }
+            }
+
+            var clipCount = _dataList.Count(x => !x.Id.All(char.IsDigit));
+
+            string message = null;
+            bool isError = false;
+
+            var showClipWarning = clipCount > 0 && (CheckTrimStart.IsChecked.GetValueOrDefault() || CheckTrimEnd.IsChecked.GetValueOrDefault());
+            var showIncompatibleWarning = incompatibleCount > 0;
+            if (showClipWarning && showIncompatibleWarning)
+            {
+                if (clipCount + incompatibleCount >= _dataList.Count)
+                {
+                    message = string.Format(Translations.Strings.TrimErrorIncompatibleAndClips, _dataList.Count);
+                    isError = true;
+                }
+                else
+                {
+                    message = string.Format(Translations.Strings.TrimWarningIncompatibleAndClips, clipCount + incompatibleCount);
+                }
+            }
+            else if (showClipWarning)
+            {
+                if (clipCount >= _dataList.Count)
+                {
+                    throw new UnreachableException("Trim inputs should be disabled when all inputs are clips");
+                }
+                else
+                {
+                    message = string.Format(Translations.Strings.TrimWarningClips, clipCount + incompatibleCount);
+                }
+            }
+            else if (showIncompatibleWarning)
+            {
+                if (incompatibleCount >= _dataList.Count)
+                {
+                    message = string.Format(Translations.Strings.TrimErrorIncompatible, _dataList.Count);
+                    isError = true;
+                }
+                else
+                {
+                    message = string.Format(Translations.Strings.TrimWarningIncompatible, clipCount + incompatibleCount);
+                }
+            }
+
+            if (!string.IsNullOrEmpty(message))
+            {
+                if (isError)
+                {
+                    MessageBox.Show(this, message, Translations.Strings.IncompatibleTrims, MessageBoxButton.OK, MessageBoxImage.Error);
+                    return false;
+                }
+
+                var result = MessageBox.Show(this, message, Translations.Strings.IncompatibleTrims, MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+                if (result == MessageBoxResult.Cancel)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private int GetTrimStartSeconds()
+        {
+            return (int)NumTrimStartHour.Value * (int)TimeSpan.SecondsPerHour + (int)NumTrimStartMinute.Value * (int)TimeSpan.SecondsPerMinute + (int)NumTrimStartSecond.Value;
+        }
+
+        private int GetTrimEndSeconds()
+        {
+            return (int)NumTrimEndHour.Value * (int)TimeSpan.SecondsPerHour + (int)NumTrimEndMinute.Value * (int)TimeSpan.SecondsPerMinute + (int)NumTrimEndSecond.Value;
         }
 
         private void btnFolder_Click(object sender, RoutedEventArgs e)
@@ -1004,6 +1120,9 @@ namespace TwitchDownloaderWPF
                 (checkChatUpdate.IsChecked.GetValueOrDefault() && radioJson.IsChecked.GetValueOrDefault()) || // Update then render
                 _dataList is null ||
                 (_dataList.Any(x => !x.IsDownload) && !checkChatUpdate.IsChecked.GetValueOrDefault() && !checkChatDownload.IsChecked.GetValueOrDefault())); // Direct render
+
+            TrimStartSettings.IsEnabled = CheckTrimStart.IsChecked.GetValueOrDefault();
+            TrimEndSettings.IsEnabled = CheckTrimEnd.IsChecked.GetValueOrDefault();
         }
 
         private void UpdateEnabledEvent(object sender, RoutedEventArgs e)

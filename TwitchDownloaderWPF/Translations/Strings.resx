@@ -1063,4 +1063,28 @@
     <value>{0} can resume but may be unstable. Do you want to resume?</value>
     <comment>{0} is the name of the application.</comment>
   </data>
+  <data name="TrimStartFull" xml:space="preserve">
+    <value>Trim Start</value>
+  </data>
+  <data name="TrimEndFull" xml:space="preserve">
+    <value>Trim End (relative)</value>
+  </data>
+  <data name="IncompatibleTrims" xml:space="preserve">
+    <value>Incompatible Trims</value>
+  </data>
+  <data name="TrimErrorIncompatibleAndClips" xml:space="preserve">
+    <value>All ({0}) inputs are incompatible with your trim settings.</value>
+  </data>
+  <data name="TrimErrorIncompatible" xml:space="preserve">
+    <value>All ({0}) inputs are incompatible with your trim settings or are clips, which can't be trimmed.</value>
+  </data>
+  <data name="TrimWarningIncompatibleAndClips" xml:space="preserve">
+    <value>Some ({0}) inputs are incompatible with your trim settings or are clips, which can't be trimmed. If you continue, they won't be trimmed at all.</value>
+  </data>
+  <data name="TrimWarningIncompatible" xml:space="preserve">
+    <value>Some ({0}) inputs are not compatible with your trim settings. If you continue, they won't be trimmed at all.</value>
+  </data>
+  <data name="TrimWarningClips" xml:space="preserve">
+    <value>Some ({0}) inputs are clips, which can't be trimmed.</value>
+  </data>
 </root>
