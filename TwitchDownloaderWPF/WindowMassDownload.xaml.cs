@@ -156,7 +156,7 @@ namespace TwitchDownloaderWPF
                         videoList.Add(new TaskData
                         {
                             Title = video.node.title,
-                            Length = video.node.lengthSeconds,
+                            Length = TimeSpan.FromSeconds(video.node.lengthSeconds),
                             Id = video.node.id,
                             Time = Settings.Default.UTCVideoTime ? video.node.createdAt : video.node.createdAt.ToLocalTime(),
                             Views = video.node.viewCount,
@@ -222,7 +222,7 @@ namespace TwitchDownloaderWPF
                         videoList.Add(new TaskData
                         {
                             Title = clip.node.title,
-                            Length = clip.node.durationSeconds,
+                            Length = TimeSpan.FromSeconds(clip.node.durationSeconds),
                             Id = clip.node.slug,
                             Time = Settings.Default.UTCVideoTime ? clip.node.createdAt : clip.node.createdAt.ToLocalTime(),
                             Views = clip.node.viewCount,
