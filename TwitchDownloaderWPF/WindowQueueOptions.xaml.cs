@@ -669,7 +669,12 @@ namespace TwitchDownloaderWPF
 
         private void EnqueueLocalTask(TaskData taskData, string folderPath)
         {
-            if (checkRender.IsChecked.GetValueOrDefault())
+            if (checkChatUpdate.IsChecked.GetValueOrDefault())
+            {
+                // Also handles rendering of output
+                EnqueueChatUpdate(taskData, folderPath);
+            }
+            else if (checkRender.IsChecked.GetValueOrDefault())
             {
                 EnqueueChatRender(taskData, folderPath);
             }
@@ -784,7 +789,8 @@ namespace TwitchDownloaderWPF
                 TrimBeginning = false,
                 TrimEnding = false,
                 FileCollisionCallback = HandleFileCollisionCallback,
-                DelayDownload = checkDelayChat.IsChecked.GetValueOrDefault()
+                DelayDownload = checkDelayChat.IsChecked.GetValueOrDefault(),
+                DownloadThreads = Settings.Default.ChatDownloadThreads
             };
             if (radioJson.IsChecked == true)
                 downloadOptions.DownloadFormat = ChatFormat.Json;
@@ -830,6 +836,68 @@ namespace TwitchDownloaderWPF
             if (checkRender.IsChecked.GetValueOrDefault())
             {
                 EnqueueChatRender(taskData, folderPath, downloadTask);
+            }
+        }
+
+        private void EnqueueChatUpdate(TaskData taskData, string folderPath)
+        {
+            ChatUpdateOptions updateOptions = new ChatUpdateOptions
+            {
+                EmbedMissing = checkEmbed.IsChecked.GetValueOrDefault(),
+                ReplaceEmbeds = CheckReplaceEmbeds.IsChecked.GetValueOrDefault(),
+                BttvEmotes = CheckBttvEmbed.IsChecked.GetValueOrDefault(),
+                FfzEmotes = CheckFfzEmbed.IsChecked.GetValueOrDefault(),
+                StvEmotes = CheckStvEmbed.IsChecked.GetValueOrDefault(),
+                TextTimestampFormat = TimestampFormat.Relative,
+                InputFile = taskData.FilePath,
+                TrimBeginning = false,
+                TrimEnding = false,
+                FileCollisionCallback = HandleFileCollisionCallback
+            };
+            if (radioJson.IsChecked == true)
+                updateOptions.OutputFormat = ChatFormat.Json;
+            else if (radioHTML.IsChecked == true)
+                updateOptions.OutputFormat = ChatFormat.Html;
+            else
+                updateOptions.OutputFormat = ChatFormat.Text;
+            // TODO: Support non-json chat compression
+            if (RadioCompressionGzip.IsChecked.GetValueOrDefault() && updateOptions.OutputFormat == ChatFormat.Json)
+                updateOptions.Compression = ChatCompression.Gzip;
+            updateOptions.OutputFile = Path.Combine(folderPath,
+                FilenameService.GetFilename(
+                    Settings.Default.TemplateChat,
+                    taskData.Title,
+                    taskData.Id,
+                    taskData.Time,
+                    taskData.StreamerName,
+                    taskData.StreamerId,
+                    updateOptions.TrimBeginning ? TimeSpan.FromSeconds(updateOptions.TrimBeginningTime) : TimeSpan.Zero,
+                    updateOptions.TrimEnding ? TimeSpan.FromSeconds(updateOptions.TrimEndingTime) : TimeSpan.FromSeconds(taskData.Length),
+                    TimeSpan.FromSeconds(taskData.Length),
+                    taskData.Views,
+                    taskData.Game,
+                    taskData.ClipperName,
+                    taskData.ClipperId) +
+                updateOptions.FileExtension);
+
+            ChatUpdateTask updateTask = new ChatUpdateTask
+            {
+                UpdateOptions = updateOptions,
+                Info =
+                {
+                    Title = taskData.Title,
+                    Thumbnail = taskData.Thumbnail
+                }
+            };
+
+            lock (PageQueue.TaskLock)
+            {
+                PageQueue.taskList.Add(updateTask);
+            }
+
+            if (checkRender.IsChecked.GetValueOrDefault())
+            {
+                EnqueueChatRender(taskData, folderPath, updateTask);
             }
         }
 
