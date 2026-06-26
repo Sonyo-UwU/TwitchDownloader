@@ -51,8 +51,8 @@ namespace TwitchDownloaderWPF
             {
                 checkVideo.Visibility = Visibility.Collapsed;
                 checkDelayVideo.Visibility = Visibility.Collapsed;
-                checkChat.IsChecked = true;
-                checkChat.IsEnabled = false;
+                checkChatDownload.IsChecked = true;
+                checkChatDownload.IsEnabled = false;
                 TextDownloadFormat.Visibility = Visibility.Collapsed;
                 radioJson.Visibility = Visibility.Collapsed;
                 radioText.Visibility = Visibility.Collapsed;
@@ -76,7 +76,7 @@ namespace TwitchDownloaderWPF
             {
                 checkVideo.Visibility = Visibility.Collapsed;
                 checkDelayVideo.Visibility = Visibility.Collapsed;
-                checkChat.Visibility = Visibility.Collapsed;
+                checkChatDownload.Visibility = Visibility.Collapsed;
                 TextDownloadFormat.Visibility = Visibility.Collapsed;
                 radioJson.Visibility = Visibility.Collapsed;
                 radioText.Visibility = Visibility.Collapsed;
@@ -93,7 +93,7 @@ namespace TwitchDownloaderWPF
             {
                 checkVideo.Visibility = Visibility.Collapsed;
                 checkDelayVideo.Visibility = Visibility.Collapsed;
-                checkChat.Visibility = Visibility.Collapsed;
+                checkChatDownload.Visibility = Visibility.Collapsed;
                 TextDownloadFormat.Visibility = Visibility.Collapsed;
                 radioJson.Visibility = Visibility.Collapsed;
                 radioText.Visibility = Visibility.Collapsed;
@@ -120,11 +120,19 @@ namespace TwitchDownloaderWPF
             {
                 // No download
                 VideoDownloadSettings.Visibility = Visibility.Collapsed;
-                checkChat.Visibility = Visibility.Collapsed;
-                ChatDownloadSettings.Visibility = Visibility.Collapsed;
+                checkChatDownload.Visibility = Visibility.Collapsed;
+                checkDelayChat.Visibility = Visibility.Collapsed;
+                checkEmbed.Content = Translations.Strings.EmbedMissing;
             }
             else
             {
+                if (_dataList.All(x => x.IsDownload))
+                {
+                    // All download
+                    checkChatUpdate.Visibility = Visibility.Collapsed;
+                    CheckReplaceEmbeds.Visibility = Visibility.Collapsed;
+                }
+
                 if (_dataList.Any(x => x.IsDownload && !x.Id.All(char.IsDigit)))
                 {
                     // At least one clip download
@@ -205,7 +213,7 @@ namespace TwitchDownloaderWPF
                         PageQueue.taskList.Add(downloadTask);
                     }
 
-                    if (checkChat.IsChecked.GetValueOrDefault())
+                    if (checkChatDownload.IsChecked.GetValueOrDefault())
                     {
                         ChatDownloadOptions chatOptions = MainWindow.pageChatDownload.GetOptions(null);
                         chatOptions.Id = downloadOptions.Id.ToString();
@@ -339,7 +347,7 @@ namespace TwitchDownloaderWPF
                         PageQueue.taskList.Add(downloadTask);
                     }
 
-                    if (checkChat.IsChecked.GetValueOrDefault())
+                    if (checkChatDownload.IsChecked.GetValueOrDefault())
                     {
                         ChatDownloadOptions chatOptions = MainWindow.pageChatDownload.GetOptions(null);
                         chatOptions.Id = downloadOptions.Id;
@@ -653,7 +661,7 @@ namespace TwitchDownloaderWPF
                 }
             }
 
-            if (checkChat.IsChecked.GetValueOrDefault())
+            if (checkChatDownload.IsChecked.GetValueOrDefault())
             {
                 EnqueueChatDownload(taskData, folderPath);
             }
@@ -903,7 +911,7 @@ namespace TwitchDownloaderWPF
             ComboPreferredQuality.IsEnabled = videoSettingsEnabled;
             checkDelayVideo.IsEnabled = videoSettingsEnabled;
 
-            var chatSettingsEnabled = checkChat.IsChecked.GetValueOrDefault();
+            var chatSettingsEnabled = checkChatDownload.IsChecked.GetValueOrDefault() || checkChatUpdate.IsChecked.GetValueOrDefault();
             TextDownloadFormat.Foreground = chatSettingsEnabled ? enabledBrush : disabledBrush;
             TextCompression.Foreground = chatSettingsEnabled ? enabledBrush : disabledBrush;
             radioJson.IsEnabled = chatSettingsEnabled;
@@ -915,13 +923,19 @@ namespace TwitchDownloaderWPF
 
             StackChatCompression.Visibility = radioJson.IsChecked.GetValueOrDefault() ? Visibility.Visible : Visibility.Collapsed;
 
-            checkEmbed.IsEnabled = chatSettingsEnabled && !radioText.IsChecked.GetValueOrDefault();
-            var embedEnabled = chatSettingsEnabled && checkEmbed.IsChecked.GetValueOrDefault();
-            CheckBttvEmbed.IsEnabled = embedEnabled;
-            CheckFfzEmbed.IsEnabled = embedEnabled;
-            CheckStvEmbed.IsEnabled = embedEnabled;
+            var embedEnabled = chatSettingsEnabled && !radioText.IsChecked.GetValueOrDefault();
+            checkEmbed.IsEnabled = embedEnabled;
+            var embedSettingsEnabled = embedEnabled && checkEmbed.IsChecked.GetValueOrDefault();
+            CheckReplaceEmbeds.IsEnabled = embedSettingsEnabled;
+            CheckBttvEmbed.IsEnabled = embedSettingsEnabled;
+            CheckFfzEmbed.IsEnabled = embedSettingsEnabled;
+            CheckStvEmbed.IsEnabled = embedSettingsEnabled;
 
-            checkRender.IsEnabled = ((checkChat.IsChecked.GetValueOrDefault() && radioJson.IsChecked.GetValueOrDefault()) || _dataList is null || _dataList.Any(x => !x.IsDownload)) && _parentPage is not PageChatRender;
+            checkRender.IsEnabled = _parentPage is not PageChatRender && (
+                (checkChatDownload.IsChecked.GetValueOrDefault() && radioJson.IsChecked.GetValueOrDefault()) || // Download then render
+                (checkChatUpdate.IsChecked.GetValueOrDefault() && radioJson.IsChecked.GetValueOrDefault()) || // Update then render
+                _dataList is null ||
+                (_dataList.Any(x => !x.IsDownload) && !checkChatUpdate.IsChecked.GetValueOrDefault() && !checkChatDownload.IsChecked.GetValueOrDefault())); // Direct render
         }
 
         private void UpdateEnabledEvent(object sender, RoutedEventArgs e)

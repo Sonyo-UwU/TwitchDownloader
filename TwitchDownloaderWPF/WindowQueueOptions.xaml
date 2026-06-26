@@ -49,8 +49,9 @@
                 </StackPanel>
                 <CheckBox x:Name="checkDelayVideo" Content="{lex:Loc DelayDownload}" HorizontalAlignment="Left" Margin="25,0,0,0" VerticalAlignment="Top" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}" IsEnabled="False" />
             </StackPanel>
-            <CheckBox x:Name="checkChat" Content="{lex:Loc DownloadChat}" HorizontalAlignment="Left" Margin="0,8,0,0" VerticalAlignment="Top" Checked="UpdateEnabledEvent" Unchecked="UpdateEnabledEvent" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}"/>
-            <StackPanel x:Name="ChatDownloadSettings" Margin="20,0,0,0">
+            <CheckBox x:Name="checkChatDownload" Content="{lex:Loc DownloadChat}" HorizontalAlignment="Left" Margin="0,8,0,0" VerticalAlignment="Top" Checked="UpdateEnabledEvent" Unchecked="UpdateEnabledEvent" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}"/>
+            <CheckBox x:Name="checkChatUpdate" Content="{lex:Loc UpdateChat}" HorizontalAlignment="Left" Margin="0,8,0,0" VerticalAlignment="Top" Checked="UpdateEnabledEvent" Unchecked="UpdateEnabledEvent" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}"/>
+            <StackPanel Margin="20,0,0,0">
                 <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                     <TextBlock x:Name="TextDownloadFormat" Text="{lex:Loc DownloadFormat}" IsEnabled="False" Margin="2,5,0,0" Foreground="{DynamicResource AppTextDisabled}"/>
                     <hc:ButtonGroup Margin="5,-1,0,0">
@@ -65,6 +66,7 @@
                     <RadioButton x:Name="RadioCompressionGzip" IsEnabled="False" Content="{lex:Loc ChatCompressionGzip}" HorizontalAlignment="Left" Margin="5,0,0,0" VerticalAlignment="Top" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}"/>
                 </StackPanel>
                 <CheckBox x:Name="checkEmbed" IsEnabled="False" Content="{lex:Loc EmbedImages}" Checked="UpdateEnabledEvent" Unchecked="UpdateEnabledEvent" HorizontalAlignment="Left" Margin="5,5,0,0" VerticalAlignment="Top" Foreground="{DynamicResource AppText}" BorderBrush="{DynamicResource AppElementBorder}"/>
+                <CheckBox x:Name="CheckReplaceEmbeds" IsEnabled="False" Content="{lex:Loc ReplaceEmbeds}" Checked="UpdateEnabledEvent" Unchecked="UpdateEnabledEvent" HorizontalAlignment="Left" Margin="5,5,0,0" VerticalAlignment="Top" Foreground="{DynamicResource AppText}" BorderBrush="{DynamicResource AppElementBorder}"/>
                 <StackPanel x:Name="StackThirdPartyEmbed" Margin="5,5,0,0" Orientation="Horizontal">
                     <CheckBox IsEnabled="False" x:Name="CheckBttvEmbed" Margin="0,0,10,0" Content="BTTV" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}" />
                     <CheckBox IsEnabled="False" x:Name="CheckFfzEmbed" Margin="0,0,10,0" Content="FFZ" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}" />
