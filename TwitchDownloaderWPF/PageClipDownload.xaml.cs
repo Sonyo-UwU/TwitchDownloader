@@ -7,12 +7,15 @@ using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using TwitchDownloaderCore;
 using TwitchDownloaderCore.Models;
+using TwitchDownloaderCore.Models.Interfaces;
 using TwitchDownloaderCore.Options;
 using TwitchDownloaderCore.Services;
 using TwitchDownloaderCore.Tools;
+using TwitchDownloaderCore.TwitchObjects.Gql;
 using TwitchDownloaderWPF.Models;
 using TwitchDownloaderWPF.Properties;
 using TwitchDownloaderWPF.Services;
+using TwitchDownloaderWPF.TwitchTasks;
 using TwitchDownloaderWPF.Utils;
 using WpfAnimatedGif;
 
@@ -23,14 +26,7 @@ namespace TwitchDownloaderWPF
     /// </summary>
     public partial class PageClipDownload : Page
     {
-        public string clipId = "";
-        public string streamerId;
-        public string clipperName;
-        public string clipperId;
-        public DateTime currentVideoTime;
-        public TimeSpan clipLength;
-        public int viewCount;
-        public string game;
+        private TaskData taskData;
         private CancellationTokenSource _cancellationTokenSource;
 
         public PageClipDownload()
@@ -45,7 +41,7 @@ namespace TwitchDownloaderWPF
 
         private async Task GetClipInfo()
         {
-            clipId = ValidateUrl(textUrl.Text.Trim());
+            var clipId = ValidateUrl(textUrl.Text.Trim());
             if (string.IsNullOrWhiteSpace(clipId))
             {
                 MessageBox.Show(Application.Current.MainWindow!, Translations.Strings.InvalidClipLinkIdMessage.Replace(@"\n", Environment.NewLine), Translations.Strings.InvalidClipLinkId, MessageBoxButton.OK, MessageBoxImage.Error);
@@ -55,7 +51,6 @@ namespace TwitchDownloaderWPF
             try
             {
                 btnGetInfo.IsEnabled = false;
-                comboQuality.Items.Clear();
                 var clipRenderStatus = await TwitchHelper.GetShareClipRenderStatus(clipId);
                 var clip = clipRenderStatus.data.clip;
 
@@ -67,19 +62,27 @@ namespace TwitchDownloaderWPF
                 }
                 imgThumbnail.Source = image;
 
-                clipLength = TimeSpan.FromSeconds(clip.durationSeconds);
-                textStreamer.Text = clip.broadcaster?.displayName ?? Translations.Strings.UnknownUser;
-                streamerId = clip.broadcaster?.id;
-                clipperName = clip.curator?.displayName ?? Translations.Strings.UnknownUser;
-                clipperId = clip.curator?.id;
-                var clipCreatedAt = clip.createdAt;
-                textCreatedAt.Text = Settings.Default.UTCVideoTime ? clipCreatedAt.ToString(CultureInfo.CurrentCulture) : clipCreatedAt.ToLocalTime().ToString(CultureInfo.CurrentCulture);
-                currentVideoTime = Settings.Default.UTCVideoTime ? clipCreatedAt : clipCreatedAt.ToLocalTime();
-                textTitle.Text = clip.title;
-                labelLength.Text = clipLength.ToString("c");
-                viewCount = clip.viewCount;
-                game = clip.game?.displayName ?? Translations.Strings.UnknownGame;
+                taskData = new()
+                {
+                    Id = clipId,
+                    Thumbnail = image,
+                    Title = clip.title,
+                    StreamerName = clip.broadcaster?.displayName ?? Translations.Strings.UnknownUser,
+                    StreamerId = clip.broadcaster?.id,
+                    ClipperName = clip.curator?.displayName ?? Translations.Strings.UnknownUser,
+                    ClipperId = clip.curator?.id,
+                    Time = Settings.Default.UTCVideoTime ? clip.createdAt : clip.createdAt.ToLocalTime(),
+                    Views = clip.viewCount,
+                    Game = clip.game?.displayName ?? Translations.Strings.UnknownGame,
+                    Length = TimeSpan.FromSeconds(clip.durationSeconds)
+                };
 
+                textStreamer.Text = taskData.StreamerName;
+                textCreatedAt.Text = taskData.Time.ToString(CultureInfo.CurrentCulture);
+                textTitle.Text = taskData.Title;
+                labelLength.Text = taskData.Length.ToString("c");
+
+                comboQuality.Items.Clear();
                 var clipQualities = VideoQualities.FromClip(clip);
                 foreach (var quality in clipQualities.Qualities)
                 {
@@ -216,8 +219,20 @@ namespace TwitchDownloaderWPF
             SaveFileDialog saveFileDialog = new SaveFileDialog
             {
                 Filter = "MP4 Files | *.mp4",
-                FileName = FilenameService.GetFilename(Settings.Default.TemplateClip, textTitle.Text, clipId, currentVideoTime, textStreamer.Text, streamerId, TimeSpan.Zero, clipLength, clipLength, viewCount, game,
-                    clipperName, clipperId) + ".mp4"
+                FileName = FilenameService.GetFilename(
+                    Settings.Default.TemplateClip,
+                    taskData.Title,
+                    taskData.Id,
+                    taskData.Time,
+                    taskData.StreamerName,
+                    taskData.StreamerId,
+                    TimeSpan.Zero,
+                    taskData.Length,
+                    taskData.Length,
+                    taskData.Views,
+                    taskData.Game,
+                    taskData.ClipperName,
+                    taskData.ClipperId) + ".mp4"
             };
             if (saveFileDialog.ShowDialog() != true)
             {
@@ -267,7 +282,7 @@ namespace TwitchDownloaderWPF
             return new ClipDownloadOptions
             {
                 Filename = fileName,
-                Id = clipId,
+                Id = taskData.Id,
                 Quality = comboQuality.Text,
                 ThrottleKib = Settings.Default.DownloadThrottleEnabled
                     ? Settings.Default.MaximumBandwidthKib
@@ -291,7 +306,10 @@ namespace TwitchDownloaderWPF
 
         private void MenuItemEnqueue_Click(object sender, RoutedEventArgs e)
         {
-            var queueOptions = new WindowQueueOptions(this)
+            var queueOptions = new WindowQueueOptions([taskData],
+                forceVideoDownload: true,
+                videoQualities: comboQuality.Items.Cast<IVideoQuality<ShareClipRenderStatusVideoQuality>>().Select(q => q.Name).ToArray(),
+                selectedQuality: comboQuality.SelectedIndex)
             {
                 Owner = Application.Current.MainWindow,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner

@@ -44,6 +44,7 @@ namespace TwitchDownloaderWPF
             }
             else if (page is PageClipDownload)
             {
+                throw new UnreachableException();
                 checkVideo.IsChecked = true;
                 checkVideo.IsEnabled = false;
                 checkDelayVideo.Visibility = Visibility.Collapsed;
@@ -113,7 +114,7 @@ namespace TwitchDownloaderWPF
         }
 
         public WindowQueueOptions(IList<TaskData> dataList,
-            bool forceVodDownload = false,
+            bool forceVideoDownload = false,
             bool forceChatDownload = false,
             TimeSpan? trimStart = null,
             TimeSpan? trimEnd = null,
@@ -195,7 +196,7 @@ namespace TwitchDownloaderWPF
                 }
             }
 
-            if (forceVodDownload)
+            if (forceVideoDownload)
             {
                 checkVideo.IsChecked = true;
                 checkVideo.IsEnabled = false;
@@ -386,6 +387,7 @@ namespace TwitchDownloaderWPF
 
                 if (_parentPage is PageClipDownload clipDownloadPage)
                 {
+                    throw new UnreachableException();
                     string folderPath = textFolder.Text;
                     if (!Directory.Exists(folderPath))
                     {
@@ -408,10 +410,10 @@ namespace TwitchDownloaderWPF
 
                     ClipDownloadOptions downloadOptions = new ClipDownloadOptions
                     {
-                        Filename = Path.Combine(folderPath, FilenameService.GetFilename(Settings.Default.TemplateClip, clipDownloadPage.textTitle.Text, clipDownloadPage.clipId,
+                        /*Filename = Path.Combine(folderPath, FilenameService.GetFilename(Settings.Default.TemplateClip, clipDownloadPage.textTitle.Text, clipDownloadPage.clipId,
                             clipDownloadPage.currentVideoTime, clipDownloadPage.textStreamer.Text, clipDownloadPage.streamerId, TimeSpan.Zero, clipDownloadPage.clipLength,
                             clipDownloadPage.clipLength, clipDownloadPage.viewCount, clipDownloadPage.game, clipDownloadPage.clipperName, clipDownloadPage.clipperId) + ".mp4"),
-                        Id = clipDownloadPage.clipId,
+                        Id = clipDownloadPage.clipId,*/
                         Quality = clipDownloadPage.comboQuality.Text,
                         ThrottleKib = Settings.Default.DownloadThrottleEnabled
                             ? Settings.Default.MaximumBandwidthKib
@@ -456,9 +458,9 @@ namespace TwitchDownloaderWPF
                         chatOptions.FfzEmotes = CheckFfzEmbed.IsChecked.GetValueOrDefault();
                         chatOptions.StvEmotes = CheckStvEmbed.IsChecked.GetValueOrDefault();
                         chatOptions.DelayDownload = checkDelayChat.IsChecked.GetValueOrDefault();
-                        chatOptions.Filename = Path.Combine(folderPath, FilenameService.GetFilename(Settings.Default.TemplateChat, downloadTask.Info.Title, chatOptions.Id,
+                        /*chatOptions.Filename = Path.Combine(folderPath, FilenameService.GetFilename(Settings.Default.TemplateChat, downloadTask.Info.Title, chatOptions.Id,
                             clipDownloadPage.currentVideoTime, clipDownloadPage.textStreamer.Text, clipDownloadPage.streamerId, TimeSpan.Zero, clipDownloadPage.clipLength, clipDownloadPage.clipLength,
-                            clipDownloadPage.viewCount, clipDownloadPage.game, clipDownloadPage.clipperName, clipDownloadPage.clipId) + chatOptions.FileExtension);
+                            clipDownloadPage.viewCount, clipDownloadPage.game, clipDownloadPage.clipperName, clipDownloadPage.clipId) + chatOptions.FileExtension);*/
                         chatOptions.FileCollisionCallback = HandleFileCollisionCallback;
 
                         ChatDownloadTask chatTask = new ChatDownloadTask

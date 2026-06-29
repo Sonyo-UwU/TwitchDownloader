@@ -516,7 +516,7 @@ namespace TwitchDownloaderWPF
             if (ValidateInputs())
             {
                 var queueOptions = new WindowQueueOptions([taskData],
-                    forceVodDownload: true,
+                    forceVideoDownload: true,
                     trimStart: checkStart.IsChecked.GetValueOrDefault() ? new TimeSpan((int)numStartHour.Value, (int)numStartMinute.Value, (int)numStartSecond.Value) : null,
                     trimEnd: checkEnd.IsChecked.GetValueOrDefault() ? new TimeSpan((int)numEndHour.Value, (int)numEndMinute.Value, (int)numEndSecond.Value) : null,
                     videoQualities: comboQuality.Items.Cast<ComboBoxItem>().Select(x => x.Tag.ToString()).ToArray(),
