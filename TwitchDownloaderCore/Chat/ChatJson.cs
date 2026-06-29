@@ -169,8 +169,8 @@ namespace TwitchDownloaderCore.Chat
         {
             const int MAX_STREAM_LENGTH = 172_800; // 48 hours in seconds. https://help.twitch.tv/s/article/broadcast-guidelines
 
-            var firstComment = chatRoot.comments.FirstOrDefault();
-            var lastComment = chatRoot.comments.LastOrDefault();
+            var firstComment = chatRoot.comments?.FirstOrDefault();
+            var lastComment = chatRoot.comments?.LastOrDefault();
 
             chatRoot.video ??= new Video
             {
@@ -185,13 +185,13 @@ namespace TwitchDownloaderCore.Chat
 
             if (chatRoot.streamer is null)
             {
-                var broadcasterComment = chatRoot.comments
+                var broadcasterComment = chatRoot.comments?
                     .Where(x => x.message.user_badges != null)
                     .FirstOrDefault(x => x.message.user_badges.Any(b => b._id.Equals("broadcaster")));
 
                 if (!int.TryParse(chatRoot.video.user_id, out var assumedId))
                 {
-                    if (chatRoot.comments.FirstOrDefault(x => int.TryParse(x.channel_id, out assumedId)) is null)
+                    if (chatRoot.comments?.FirstOrDefault(x => int.TryParse(x.channel_id, out assumedId)) is null)
                     {
                         if (!int.TryParse(broadcasterComment?.commenter._id, out assumedId))
                         {
@@ -245,25 +245,28 @@ namespace TwitchDownloaderCore.Chat
                 chatRoot.video.duration = null;
             }
 
-            // Fix incorrect bits_spent value on chats between v5 shutdown and the lay295#520 fix
-            if (chatRoot.comments.All(c => c.message.bits_spent == 0))
+            if (chatRoot.comments is not null)
             {
-                foreach (var comment in chatRoot.comments)
+                // Fix incorrect bits_spent value on chats between v5 shutdown and the lay295#520 fix
+                if (chatRoot.comments.All(c => c.message.bits_spent == 0))
                 {
-                    var bitMatch = TwitchRegex.BitsRegex.Match(comment.message.body);
-                    if (bitMatch.Success && int.TryParse(bitMatch.ValueSpan, out var result))
+                    foreach (var comment in chatRoot.comments)
                     {
-                        comment.message.bits_spent = result;
+                        var bitMatch = TwitchRegex.BitsRegex.Match(comment.message.body);
+                        if (bitMatch.Success && int.TryParse(bitMatch.ValueSpan, out var result))
+                        {
+                            comment.message.bits_spent = result;
+                        }
                     }
                 }
-            }
 
-            // 300x300 avatars are overkill for chat rendering
-            foreach (var comment in chatRoot.comments)
-            {
-                if (comment.commenter?.logo?.Contains("300x300") ?? false)
+                // 300x300 avatars are overkill for chat rendering
+                foreach (var comment in chatRoot.comments)
                 {
-                    comment.commenter.logo = comment.commenter.logo.Replace("300x300", "70x70");
+                    if (comment.commenter?.logo?.Contains("300x300") ?? false)
+                    {
+                        comment.commenter.logo = comment.commenter.logo.Replace("300x300", "70x70");
+                    }
                 }
             }
         }
