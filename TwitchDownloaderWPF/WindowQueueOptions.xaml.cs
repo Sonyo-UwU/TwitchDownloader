@@ -50,6 +50,7 @@ namespace TwitchDownloaderWPF
             }
             else if (page is PageChatDownload chatPage)
             {
+                throw new UnreachableException();
                 checkVideo.Visibility = Visibility.Collapsed;
                 checkDelayVideo.Visibility = Visibility.Collapsed;
                 checkChatDownload.IsChecked = true;
@@ -68,10 +69,10 @@ namespace TwitchDownloaderWPF
                     checkRender.IsChecked = false;
                     checkRender.IsEnabled = false;
                 }
-                if (chatPage.downloadType == DownloadType.Clip)
-                {
-                    checkDelayChat.Visibility = Visibility.Collapsed;
-                }
+                //if (chatPage.downloadType == DownloadType.Clip)
+                //{
+                //    checkDelayChat.Visibility = Visibility.Collapsed;
+                //}
             }
             else if (page is PageChatUpdate)
             {
@@ -110,7 +111,10 @@ namespace TwitchDownloaderWPF
             }
         }
 
-        public WindowQueueOptions(IList<TaskData> dataList)
+        public WindowQueueOptions(IList<TaskData> dataList,
+            bool forceChatDownload = false,
+            TimeSpan? trimStart = null,
+            TimeSpan? trimEnd = null)
         {
             _dataList = dataList;
             InitializeComponent();
@@ -171,6 +175,57 @@ namespace TwitchDownloaderWPF
                     break;
                 }
             }
+
+            if (forceChatDownload)
+            {
+                checkChatDownload.IsChecked = true;
+                checkChatDownload.IsEnabled = false;
+            }
+
+            switch ((ChatFormat)Settings.Default.ChatDownloadType)
+            {
+                case ChatFormat.Json:
+                    radioJson.IsChecked = true;
+                    break;
+                case ChatFormat.Text:
+                    radioText.IsChecked = true;
+                    break;
+                case ChatFormat.Html:
+                    radioHTML.IsChecked = true;
+                    break;
+            }
+            switch ((ChatCompression)Settings.Default.ChatJsonCompression)
+            {
+                case ChatCompression.None:
+                    RadioCompressionNone.IsChecked = true;
+                    break;
+                case ChatCompression.Gzip:
+                    RadioCompressionGzip.IsChecked = true;
+                    break;
+            }
+
+            checkEmbed.IsChecked = _dataList.All(x => !x.IsDownload) ? Settings.Default.ChatEmbedMissing : Settings.Default.ChatEmbedEmotes;
+            CheckReplaceEmbeds.IsChecked = Settings.Default.ChatReplaceEmbeds;
+            CheckBttvEmbed.IsChecked = Settings.Default.BTTVEmotes;
+            CheckFfzEmbed.IsChecked = Settings.Default.FFZEmotes;
+            CheckStvEmbed.IsChecked = Settings.Default.STVEmotes;
+
+            if (trimStart is not null)
+            {
+                CheckTrimStart.IsChecked = true;
+                NumTrimStartHour.Value = trimStart.Value.Hours;
+                NumTrimStartMinute.Value = trimStart.Value.Minutes;
+                NumTrimStartSecond.Value = trimStart.Value.Seconds;
+            }
+            if (trimEnd is not null)
+            {
+                CheckTrimEnd.IsChecked = true;
+                NumTrimEndHour.Value = trimEnd.Value.Hours;
+                NumTrimEndMinute.Value = trimEnd.Value.Minutes;
+                NumTrimEndSecond.Value = trimEnd.Value.Seconds;
+            }
+
+            UpdateEnabled();
         }
 
         private FileInfo HandleFileCollisionCallback(FileInfo fileInfo)
@@ -431,6 +486,7 @@ namespace TwitchDownloaderWPF
 
                 if (_parentPage is PageChatDownload chatDownloadPage)
                 {
+                    throw new UnreachableException();
                     string folderPath = textFolder.Text;
                     if (!Directory.Exists(folderPath))
                     {
@@ -452,7 +508,7 @@ namespace TwitchDownloaderWPF
                     }
 
                     ChatDownloadOptions chatOptions = MainWindow.pageChatDownload.GetOptions(null);
-                    chatOptions.Filename = Path.Combine(folderPath,
+                    /*chatOptions.Filename = Path.Combine(folderPath,
                         FilenameService.GetFilename(
                             Settings.Default.TemplateChat,
                             chatDownloadPage.textTitle.Text,
@@ -465,7 +521,7 @@ namespace TwitchDownloaderWPF
                             chatDownloadPage.vodLength,
                             chatDownloadPage.viewCount,
                             chatDownloadPage.game) +
-                        chatOptions.FileExtension);
+                        chatOptions.FileExtension);*/
                     chatOptions.DelayDownload = checkDelayChat.IsChecked.GetValueOrDefault();
                     chatOptions.FileCollisionCallback = HandleFileCollisionCallback;
 
