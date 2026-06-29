@@ -38,6 +38,7 @@ namespace TwitchDownloaderWPF
 
             if (page is PageVodDownload)
             {
+                throw new UnreachableException();
                 checkVideo.IsChecked = true;
                 checkVideo.IsEnabled = false;
             }
@@ -112,9 +113,12 @@ namespace TwitchDownloaderWPF
         }
 
         public WindowQueueOptions(IList<TaskData> dataList,
+            bool forceVodDownload = false,
             bool forceChatDownload = false,
             TimeSpan? trimStart = null,
-            TimeSpan? trimEnd = null)
+            TimeSpan? trimEnd = null,
+            string[] videoQualities = null,
+            int selectedQuality = 0)
         {
             _dataList = dataList;
             InitializeComponent();
@@ -166,16 +170,36 @@ namespace TwitchDownloaderWPF
                 }
             }
 
-            var preferredQuality = Settings.Default.PreferredQuality;
-            for (var i = 0; i < ComboPreferredQuality.Items.Count; i++)
+            if (videoQualities is { Length: > 0 })
             {
-                if (ComboPreferredQuality.Items[i] is ComboBoxItem { Content: string quality } && quality == preferredQuality)
+                ComboPreferredQuality.Items.Clear();
+                for (var i = 0; i < videoQualities.Length; i++)
                 {
-                    ComboPreferredQuality.SelectedIndex = i;
-                    break;
+                    ComboPreferredQuality.Items.Add(new ComboBoxItem() { Content = videoQualities[i] });
+                    if (i == selectedQuality)
+                    {
+                        ComboPreferredQuality.SelectedIndex = i;
+                    }
+                }
+            }
+            else
+            {
+                var preferredQuality = Settings.Default.PreferredQuality;
+                for (var i = 0; i < ComboPreferredQuality.Items.Count; i++)
+                {
+                    if (ComboPreferredQuality.Items[i] is ComboBoxItem { Content: string quality } && quality == preferredQuality)
+                    {
+                        ComboPreferredQuality.SelectedIndex = i;
+                        break;
+                    }
                 }
             }
 
+            if (forceVodDownload)
+            {
+                checkVideo.IsChecked = true;
+                checkVideo.IsEnabled = false;
+            }
             if (forceChatDownload)
             {
                 checkChatDownload.IsChecked = true;
@@ -239,6 +263,7 @@ namespace TwitchDownloaderWPF
             {
                 if (_parentPage is PageVodDownload vodDownloadPage)
                 {
+                    throw new UnreachableException();
                     string folderPath = textFolder.Text;
                     if (!Directory.Exists(folderPath))
                     {

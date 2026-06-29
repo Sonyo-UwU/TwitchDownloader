@@ -12,54 +12,64 @@ namespace TwitchDownloaderWPF.TwitchTasks
         {
             if (id.All(char.IsDigit))
             {
-                var res = await TwitchHelper.GetVideoInfo(long.Parse(id));
-                var videoInfo = res.data.video;
-
-                var thumbUrl = videoInfo.thumbnailURLs.FirstOrDefault();
-                if (!ThumbnailService.TryGetThumb(thumbUrl, out var thumbnail))
-                {
-                    _ = ThumbnailService.TryGetThumb(ThumbnailService.THUMBNAIL_MISSING_URL, out thumbnail);
-                }
-
-                return new TaskData
-                {
-                    Id = id,
-                    Thumbnail = thumbnail,
-                    Title = videoInfo.title,
-                    StreamerName = videoInfo.owner?.displayName ?? Translations.Strings.UnknownUser,
-                    StreamerId = videoInfo.owner?.id,
-                    Time = Settings.Default.UTCVideoTime ? videoInfo.createdAt : videoInfo.createdAt.ToLocalTime(),
-                    Views = videoInfo.viewCount,
-                    Game = videoInfo.game?.displayName ?? Translations.Strings.UnknownGame,
-                    Length = TimeSpan.FromSeconds(videoInfo.lengthSeconds)
-                };
+                return await FromVodIdAsync(long.Parse(id));
             }
             else
             {
-                var res = await TwitchHelper.GetClipInfo(id);
-                var clipInfo = res.data.clip;
-
-                var thumbUrl = clipInfo.thumbnailURL;
-                if (!ThumbnailService.TryGetThumb(thumbUrl, out var thumbnail))
-                {
-                    _ = ThumbnailService.TryGetThumb(ThumbnailService.THUMBNAIL_MISSING_URL, out thumbnail);
-                }
-
-                return new TaskData
-                {
-                    Id = id,
-                    Thumbnail = thumbnail,
-                    Title = clipInfo.title,
-                    StreamerName = clipInfo.broadcaster?.displayName ?? Translations.Strings.UnknownUser,
-                    StreamerId = clipInfo.broadcaster?.id,
-                    ClipperName = clipInfo.curator?.displayName ?? Translations.Strings.UnknownUser,
-                    ClipperId = clipInfo.curator?.id,
-                    Time = Settings.Default.UTCVideoTime ? clipInfo.createdAt : clipInfo.createdAt.ToLocalTime(),
-                    Views = clipInfo.viewCount,
-                    Game = clipInfo.game?.displayName ?? Translations.Strings.UnknownGame,
-                    Length = TimeSpan.FromSeconds(clipInfo.durationSeconds)
-                };
+                return await FromClipIdAsync(id);
             }
+        }
+
+        public static async Task<TaskData> FromVodIdAsync(long id)
+        {
+            var res = await TwitchHelper.GetVideoInfo(id);
+            var videoInfo = res.data.video;
+
+            var thumbUrl = videoInfo.thumbnailURLs.FirstOrDefault();
+            if (!ThumbnailService.TryGetThumb(thumbUrl, out var thumbnail))
+            {
+                _ = ThumbnailService.TryGetThumb(ThumbnailService.THUMBNAIL_MISSING_URL, out thumbnail);
+            }
+
+            return new TaskData
+            {
+                Id = id.ToString(),
+                Thumbnail = thumbnail,
+                Title = videoInfo.title,
+                StreamerName = videoInfo.owner?.displayName ?? Translations.Strings.UnknownUser,
+                StreamerId = videoInfo.owner?.id,
+                Time = Settings.Default.UTCVideoTime ? videoInfo.createdAt : videoInfo.createdAt.ToLocalTime(),
+                Views = videoInfo.viewCount,
+                Game = videoInfo.game?.displayName ?? Translations.Strings.UnknownGame,
+                Length = TimeSpan.FromSeconds(videoInfo.lengthSeconds)
+            };
+        }
+
+        public static async Task<TaskData> FromClipIdAsync(string id)
+        {
+            var res = await TwitchHelper.GetClipInfo(id);
+            var clipInfo = res.data.clip;
+
+            var thumbUrl = clipInfo.thumbnailURL;
+            if (!ThumbnailService.TryGetThumb(thumbUrl, out var thumbnail))
+            {
+                _ = ThumbnailService.TryGetThumb(ThumbnailService.THUMBNAIL_MISSING_URL, out thumbnail);
+            }
+
+            return new TaskData
+            {
+                Id = id,
+                Thumbnail = thumbnail,
+                Title = clipInfo.title,
+                StreamerName = clipInfo.broadcaster?.displayName ?? Translations.Strings.UnknownUser,
+                StreamerId = clipInfo.broadcaster?.id,
+                ClipperName = clipInfo.curator?.displayName ?? Translations.Strings.UnknownUser,
+                ClipperId = clipInfo.curator?.id,
+                Time = Settings.Default.UTCVideoTime ? clipInfo.createdAt : clipInfo.createdAt.ToLocalTime(),
+                Views = clipInfo.viewCount,
+                Game = clipInfo.game?.displayName ?? Translations.Strings.UnknownGame,
+                Length = TimeSpan.FromSeconds(clipInfo.durationSeconds)
+            };
         }
 
         public string FilePath { get; set; } = null;

@@ -18,7 +18,7 @@ using TwitchDownloaderCore.Tools;
 using TwitchDownloaderCore.TwitchObjects.Gql;
 using TwitchDownloaderWPF.Models;
 using TwitchDownloaderWPF.Properties;
-using TwitchDownloaderWPF.Services;
+using TwitchDownloaderWPF.TwitchTasks;
 using TwitchDownloaderWPF.Utils;
 using WpfAnimatedGif;
 
@@ -29,12 +29,7 @@ namespace TwitchDownloaderWPF
     /// </summary>
     public partial class PageVodDownload : Page
     {
-        public long currentVideoId;
-        public DateTime currentVideoTime;
-        public TimeSpan vodLength;
-        public int viewCount;
-        public string game;
-        public string streamerId;
+        private TaskData taskData;
         private CancellationTokenSource _cancellationTokenSource;
 
         public PageVodDownload()
@@ -89,25 +84,22 @@ namespace TwitchDownloaderWPF
                 return;
             }
 
-            currentVideoId = videoId;
             try
             {
-                Task<GqlVideoResponse> taskVideoInfo = TwitchHelper.GetVideoInfo(videoId);
+                taskData = await TaskData.FromVodIdAsync(videoId);
+
+                Task<TaskData> taskVideoData = TaskData.FromVodIdAsync(videoId);
                 Task<GqlVideoTokenResponse> taskAccessToken = TwitchHelper.GetVideoToken(videoId, TextOauth.Text);
-                await Task.WhenAll(taskVideoInfo, taskAccessToken);
+                await Task.WhenAll(taskVideoData, taskAccessToken);
 
                 if (taskAccessToken.Result.data.videoPlaybackAccessToken is null)
                 {
                     throw new NullReferenceException("Invalid VOD, deleted/expired VOD possibly?");
                 }
 
-                var thumbUrl = taskVideoInfo.Result.data.video.thumbnailURLs.FirstOrDefault();
-                if (!ThumbnailService.TryGetThumb(thumbUrl, out var image))
-                {
-                    AppendLog(Translations.Strings.ErrorLog + Translations.Strings.UnableToFindThumbnail);
-                    _ = ThumbnailService.TryGetThumb(ThumbnailService.THUMBNAIL_MISSING_URL, out image);
-                }
-                imgThumbnail.Source = image;
+                taskData = taskVideoData.Result;
+
+                imgThumbnail.Source = taskData.Thumbnail;
 
                 comboQuality.Items.Clear();
 
@@ -130,13 +122,9 @@ namespace TwitchDownloaderWPF
 
                 comboQuality.SelectedIndex = 0;
 
-                vodLength = TimeSpan.FromSeconds(taskVideoInfo.Result.data.video.lengthSeconds);
-                textStreamer.Text = taskVideoInfo.Result.data.video.owner?.displayName ?? Translations.Strings.UnknownUser;
-                streamerId = taskVideoInfo.Result.data.video.owner?.id;
-                textTitle.Text = taskVideoInfo.Result.data.video.title;
-                var videoCreatedAt = taskVideoInfo.Result.data.video.createdAt;
-                textCreatedAt.Text = Settings.Default.UTCVideoTime ? videoCreatedAt.ToString(CultureInfo.CurrentCulture) : videoCreatedAt.ToLocalTime().ToString(CultureInfo.CurrentCulture);
-                currentVideoTime = Settings.Default.UTCVideoTime ? videoCreatedAt : videoCreatedAt.ToLocalTime();
+                textStreamer.Text = taskData.StreamerName;
+                textTitle.Text = taskData.Title;
+                textCreatedAt.Text = Settings.Default.UTCVideoTime ? taskData.Time.ToString(CultureInfo.CurrentCulture) : taskData.Time.ToLocalTime().ToString(CultureInfo.CurrentCulture);
                 var urlTimeCodeMatch = TwitchRegex.UrlTimeCode.Match(textUrl.Text);
                 if (urlTimeCodeMatch.Success)
                 {
@@ -153,23 +141,33 @@ namespace TwitchDownloaderWPF
                     numStartSecond.Value = 0;
                 }
 
-                if (vodLength > TimeSpan.Zero)
+                numStartHour.Maximum = 48;
+                numEndHour.Maximum = 48;
+                numStartMinute.Maximum = 59;
+                numEndMinute.Maximum = 59;
+                numStartSecond.Maximum = 59;
+                numEndSecond.Maximum = 59;
+
+                if (taskData.Length > TimeSpan.Zero)
                 {
-                    numStartHour.Maximum = (int)vodLength.TotalHours;
-                    numEndHour.Maximum = (int)vodLength.TotalHours;
-                }
-                else
-                {
-                    numStartHour.Maximum = 48;
-                    numEndHour.Maximum = 48;
+                    numStartHour.Maximum = taskData.Length.Hours;
+                    numEndHour.Maximum = taskData.Length.Hours;
+                    if (taskData.Length.Hours == 0)
+                    {
+                        numStartMinute.Maximum = taskData.Length.Minutes;
+                        numEndMinute.Maximum = taskData.Length.Minutes;
+                        if (taskData.Length.Minutes == 0)
+                        {
+                            numStartSecond.Maximum = taskData.Length.Seconds;
+                            numEndSecond.Maximum = taskData.Length.Seconds;
+                        }
+                    }
                 }
 
-                numEndHour.Value = (int)vodLength.TotalHours;
-                numEndMinute.Value = vodLength.Minutes;
-                numEndSecond.Value = vodLength.Seconds;
-                labelLength.Text = vodLength.ToString("c");
-                viewCount = taskVideoInfo.Result.data.video.viewCount;
-                game = taskVideoInfo.Result.data.video.game?.displayName ?? Translations.Strings.UnknownGame;
+                numEndHour.Value = (int)taskData.Length.TotalHours;
+                numEndMinute.Value = taskData.Length.Minutes;
+                numEndSecond.Value = taskData.Length.Seconds;
+                labelLength.Text = taskData.Length.ToString("c");
 
                 UpdateVideoSizeEstimates();
 
@@ -207,13 +205,13 @@ namespace TwitchDownloaderWPF
                 ThrottleKib = Settings.Default.DownloadThrottleEnabled
                     ? Settings.Default.MaximumBandwidthKib
                     : -1,
-                Filename = filename ?? Path.Combine(folder, FilenameService.GetFilename(Settings.Default.TemplateVod, textTitle.Text, currentVideoId.ToString(), currentVideoTime, textStreamer.Text, streamerId,
+                Filename = filename ?? Path.Combine(folder, FilenameService.GetFilename(Settings.Default.TemplateVod, textTitle.Text, taskData.Id, taskData.Time, textStreamer.Text, taskData.StreamerId,
                     checkStart.IsChecked == true ? new TimeSpan((int)numStartHour.Value, (int)numStartMinute.Value, (int)numStartSecond.Value) : TimeSpan.Zero,
-                    checkEnd.IsChecked == true ? new TimeSpan((int)numEndHour.Value, (int)numEndMinute.Value, (int)numEndSecond.Value) : vodLength,
-                    vodLength, viewCount, game) + FilenameService.GuessVodFileExtension(((ComboBoxItem)comboQuality.SelectedItem).Tag.ToString())),
+                    checkEnd.IsChecked == true ? new TimeSpan((int)numEndHour.Value, (int)numEndMinute.Value, (int)numEndSecond.Value) : taskData.Length,
+                    taskData.Length, taskData.Views, taskData.Game) + FilenameService.GuessVodFileExtension(((ComboBoxItem)comboQuality.SelectedItem).Tag.ToString())),
                 Oauth = TextOauth.Text,
                 Quality = ((ComboBoxItem)comboQuality.SelectedItem).Tag.ToString(),
-                Id = currentVideoId,
+                Id = long.Parse(taskData.Id),
                 TrimBeginning = checkStart.IsChecked.GetValueOrDefault(),
                 TrimBeginningTime = new TimeSpan((int)numStartHour.Value, (int)numStartMinute.Value, (int)numStartSecond.Value),
                 TrimEnding = checkEnd.IsChecked.GetValueOrDefault(),
@@ -239,7 +237,7 @@ namespace TwitchDownloaderWPF
                 : TimeSpan.Zero;
             var trimEnd = checkEnd.IsChecked == true
                 ? new TimeSpan((int)numEndHour.Value, (int)numEndMinute.Value, (int)numEndSecond.Value)
-                : vodLength;
+                : taskData.Length;
 
             foreach (var item in comboQuality.Items.Cast<ComboBoxItem>())
             {
@@ -294,7 +292,7 @@ namespace TwitchDownloaderWPF
             if (checkStart.IsChecked.GetValueOrDefault())
             {
                 var beginTime = new TimeSpan((int)numStartHour.Value, (int)numStartMinute.Value, (int)numStartSecond.Value);
-                if (vodLength > TimeSpan.Zero && beginTime.TotalSeconds >= vodLength.TotalSeconds)
+                if (taskData.Length > TimeSpan.Zero && beginTime >= taskData.Length)
                 {
                     return false;
                 }
@@ -430,10 +428,10 @@ namespace TwitchDownloaderWPF
             SaveFileDialog saveFileDialog = new SaveFileDialog
             {
                 Filter = comboQuality.Text.Contains("Audio", StringComparison.OrdinalIgnoreCase) ? "M4A Files | *.m4a" : "MP4 Files | *.mp4",
-                FileName = FilenameService.GetFilename(Settings.Default.TemplateVod, textTitle.Text, currentVideoId.ToString(), currentVideoTime, textStreamer.Text, streamerId,
+                FileName = FilenameService.GetFilename(Settings.Default.TemplateVod, textTitle.Text, taskData.Id, taskData.Time, textStreamer.Text, taskData.StreamerId,
                     checkStart.IsChecked == true ? new TimeSpan((int)numStartHour.Value, (int)numStartMinute.Value, (int)numStartSecond.Value) : TimeSpan.Zero,
-                    checkEnd.IsChecked == true ? new TimeSpan((int)numEndHour.Value, (int)numEndMinute.Value, (int)numEndSecond.Value) : vodLength,
-                    vodLength, viewCount, game) + FilenameService.GuessVodFileExtension(comboQuality.Text)
+                    checkEnd.IsChecked == true ? new TimeSpan((int)numEndHour.Value, (int)numEndMinute.Value, (int)numEndSecond.Value) : taskData.Length,
+                    taskData.Length, taskData.Views, taskData.Game) + FilenameService.GuessVodFileExtension(comboQuality.Text)
             };
             if (saveFileDialog.ShowDialog() == false)
             {
@@ -517,7 +515,12 @@ namespace TwitchDownloaderWPF
 
             if (ValidateInputs())
             {
-                var queueOptions = new WindowQueueOptions(this)
+                var queueOptions = new WindowQueueOptions([taskData],
+                    forceVodDownload: true,
+                    trimStart: checkStart.IsChecked.GetValueOrDefault() ? new TimeSpan((int)numStartHour.Value, (int)numStartMinute.Value, (int)numStartSecond.Value) : null,
+                    trimEnd: checkEnd.IsChecked.GetValueOrDefault() ? new TimeSpan((int)numEndHour.Value, (int)numEndMinute.Value, (int)numEndSecond.Value) : null,
+                    videoQualities: comboQuality.Items.Cast<ComboBoxItem>().Select(x => x.Tag.ToString()).ToArray(),
+                    selectedQuality: comboQuality.SelectedIndex)
                 {
                     Owner = Application.Current.MainWindow,
                     WindowStartupLocation = WindowStartupLocation.CenterOwner
