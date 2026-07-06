@@ -44,7 +44,7 @@ namespace TwitchDownloaderWPF
             {
                 throw new UnreachableException();
             }
-            else if (page is PageChatDownload chatPage)
+            else if (page is PageChatDownload)
             {
                 throw new UnreachableException();
             }

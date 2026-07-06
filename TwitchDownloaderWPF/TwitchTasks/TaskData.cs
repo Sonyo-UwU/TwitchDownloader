@@ -1,6 +1,7 @@
 ﻿using JetBrains.Annotations;
 using System.Windows.Media;
 using TwitchDownloaderCore;
+using TwitchDownloaderCore.Chat;
 using TwitchDownloaderWPF.Properties;
 using TwitchDownloaderWPF.Services;
 
@@ -71,6 +72,31 @@ namespace TwitchDownloaderWPF.TwitchTasks
                 Length = TimeSpan.FromSeconds(clipInfo.durationSeconds)
             };
         }
+        public static async Task<TaskData> FromJsonFileAsync(string filePath)
+        {
+            // Get first comment to update missing values
+            var chatRoot = await ChatJson.DeserializeAsync(filePath, true, true, false);
+
+            return new TaskData
+            {
+                FilePath = filePath,
+                Id = chatRoot.video.id,
+                Thumbnail = ThumbnailService.GetThumb(ThumbnailService.THUMBNAIL_MISSING_URL),
+                Title = chatRoot.video.title ?? Translations.Strings.Unknown,
+                StreamerName = chatRoot.streamer?.name ?? Translations.Strings.UnknownUser,
+                StreamerId = chatRoot.streamer?.id.ToString(),
+                ClipperName = chatRoot.clipper?.name ?? (chatRoot.clipper?.id is null ? "null" : Translations.Strings.UnknownUser),
+                ClipperId = chatRoot.clipper?.id.ToString(),
+                Time = Settings.Default.UTCVideoTime ? chatRoot.video.created_at : chatRoot.video.created_at.ToLocalTime(),
+                Views = chatRoot.video.viewCount,
+                Game = chatRoot.video.game ?? Translations.Strings.UnknownGame,
+                Length = TimeSpan.FromSeconds(Math.Max(0.0, chatRoot.video.length)),
+                TrimStart = chatRoot.video.start > 0,
+                TrimEnd = chatRoot.video.end != chatRoot.video.length,
+                TrimStartTime = TimeSpan.FromSeconds(Math.Max(0.0, chatRoot.video.start)),
+                TrimEndTime = TimeSpan.FromSeconds(Math.Max(0.0, chatRoot.video.end))
+            };
+        }
 
         public string FilePath { get; set; } = null;
         public bool IsDownload => FilePath is null;
@@ -83,6 +109,10 @@ namespace TwitchDownloaderWPF.TwitchTasks
         public ImageSource Thumbnail { get; set; }
         public DateTime Time { get; set; }
         public TimeSpan Length { get; set; }
+        public bool TrimStart { get; set; }
+        public TimeSpan TrimStartTime { get; set; }
+        public bool TrimEnd { get; set; }
+        public TimeSpan TrimEndTime { get; set; }
         public int Views { get; set; }
         public string Game { get; set; }
 
