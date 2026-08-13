@@ -88,13 +88,15 @@ namespace TwitchDownloaderWPF
         public WindowQueueOptions(IList<TaskData> dataList,
             bool forceVideoDownload = false,
             bool forceChatDownload = false,
-            TimeSpan? trimStart = null,
-            TimeSpan? trimEnd = null,
+            bool forceChatUpdate = false,
             string[] videoQualities = null,
             int selectedQuality = 0)
         {
             _dataList = dataList;
             InitializeComponent();
+
+            if (_dataList.Count == 0)
+                throw new Exception("Data list must contain at least one task");
 
             textFolder.Text = Settings.Default.QueueFolder;
 
@@ -178,6 +180,11 @@ namespace TwitchDownloaderWPF
                 checkChatDownload.IsChecked = true;
                 checkChatDownload.IsEnabled = false;
             }
+            if (forceChatUpdate)
+            {
+                checkChatUpdate.IsChecked = true;
+                checkChatUpdate.IsEnabled = false;
+            }
 
             switch ((ChatFormat)Settings.Default.ChatDownloadType)
             {
@@ -207,19 +214,40 @@ namespace TwitchDownloaderWPF
             CheckFfzEmbed.IsChecked = Settings.Default.FFZEmotes;
             CheckStvEmbed.IsChecked = Settings.Default.STVEmotes;
 
-            if (trimStart is not null)
+
+            // Set trims from first task
+            var firstTask = _dataList[0];
+            NumTrimStartHour.Value = (int)firstTask.TrimStartTime.TotalHours;
+            NumTrimStartMinute.Value = firstTask.TrimStartTime.Minutes;
+            NumTrimStartSecond.Value = firstTask.TrimStartTime.Seconds;
+            CheckTrimStart.IsChecked = firstTask.TrimStart;
+            NumTrimEndHour.Value = (int)firstTask.RelativeTrimEndTime.TotalHours;
+            NumTrimEndMinute.Value = firstTask.RelativeTrimEndTime.Minutes;
+            NumTrimEndSecond.Value = firstTask.RelativeTrimEndTime.Seconds;
+            CheckTrimEnd.IsChecked = firstTask.TrimEnd;
+
+            // Check if any other task has other trim options
+            for (int i = 1; i < _dataList.Count; i++)
             {
-                CheckTrimStart.IsChecked = true;
-                NumTrimStartHour.Value = trimStart.Value.Hours;
-                NumTrimStartMinute.Value = trimStart.Value.Minutes;
-                NumTrimStartSecond.Value = trimStart.Value.Seconds;
-            }
-            if (trimEnd is not null)
-            {
-                CheckTrimEnd.IsChecked = true;
-                NumTrimEndHour.Value = trimEnd.Value.Hours;
-                NumTrimEndMinute.Value = trimEnd.Value.Minutes;
-                NumTrimEndSecond.Value = trimEnd.Value.Seconds;
+                TaskData task = _dataList[i];
+
+                if (NumTrimStartHour.Value   != (int)task.TrimStartTime.TotalHours ||
+                    NumTrimStartMinute.Value !=      task.TrimStartTime.Minutes    ||
+                    NumTrimStartSecond.Value !=      task.TrimStartTime.Seconds    ||
+                    CheckTrimStart.IsChecked.GetValueOrDefault() != task.TrimStart ||
+                    
+                    NumTrimEndHour.Value   != (int)task.RelativeTrimEndTime.TotalHours ||
+                    NumTrimEndMinute.Value !=      task.RelativeTrimEndTime.Minutes    ||
+                    NumTrimEndSecond.Value !=      task.RelativeTrimEndTime.Seconds    ||
+                    CheckTrimEnd.IsChecked.GetValueOrDefault() != task.TrimEnd)
+                {
+                    // Incompatible, disable trim options
+                    CheckTrimStart.Visibility = Visibility.Collapsed;
+                    TrimStartSettings.Visibility = Visibility.Collapsed;
+                    CheckTrimEnd.Visibility = Visibility.Collapsed;
+                    TrimEndSettings.Visibility = Visibility.Collapsed;
+                    break;
+                }
             }
 
             UpdateEnabled();
@@ -251,51 +279,7 @@ namespace TwitchDownloaderWPF
 
                 if (_parentPage is PageChatUpdate chatUpdatePage)
                 {
-                    string folderPath = textFolder.Text;
-                    if (!Directory.Exists(folderPath))
-                    {
-                        try
-                        {
-                            TwitchHelper.CreateDirectory(folderPath);
-                        }
-                        catch (Exception ex)
-                        {
-                            MessageBox.Show(this, Translations.Strings.InvalidFolderPathMessage, Translations.Strings.InvalidFolderPath, MessageBoxButton.OK, MessageBoxImage.Error);
-
-                            if (Settings.Default.VerboseErrors)
-                            {
-                                MessageBox.Show(this, ex.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
-                            }
-
-                            return;
-                        }
-                    }
-
-                    ChatUpdateOptions chatOptions = MainWindow.pageChatUpdate.GetOptions(null);
-                    chatOptions.InputFile = chatUpdatePage.InputFile;
-                    chatOptions.OutputFile = Path.Combine(folderPath, FilenameService.GetFilename(Settings.Default.TemplateChat, chatUpdatePage.textTitle.Text, chatUpdatePage.VideoId, chatUpdatePage.VideoCreatedAt, chatUpdatePage.textStreamer.Text,
-                        chatUpdatePage.StreamerId,
-                        chatOptions.TrimBeginning ? TimeSpan.FromSeconds(chatOptions.TrimBeginningTime) : TimeSpan.Zero,
-                        chatOptions.TrimEnding ? TimeSpan.FromSeconds(chatOptions.TrimEndingTime) : chatUpdatePage.VideoLength,
-                        chatUpdatePage.VideoLength, chatUpdatePage.ViewCount, chatUpdatePage.Game, chatUpdatePage.ClipperName, chatUpdatePage.ClipperId) + chatOptions.FileExtension);
-                    chatOptions.FileCollisionCallback = HandleFileCollisionCallback;
-
-                    ChatUpdateTask chatTask = new ChatUpdateTask
-                    {
-                        UpdateOptions = chatOptions,
-                        Info =
-                        {
-                            Title = chatUpdatePage.textTitle.Text,
-                            Thumbnail = chatUpdatePage.imgThumbnail.Source
-                        }
-                    };
-
-                    lock (PageQueue.TaskLock)
-                    {
-                        PageQueue.taskList.Add(chatTask);
-                    }
-
-                    this.Close();
+                    throw new UnreachableException();
                 }
 
                 if (_parentPage is PageChatRender chatRenderPage)
