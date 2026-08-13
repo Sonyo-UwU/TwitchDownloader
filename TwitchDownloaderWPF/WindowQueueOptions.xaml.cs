@@ -22,73 +22,15 @@ namespace TwitchDownloaderWPF
         // This file is absolutely atrocious, but fixing it would mean rewriting the entire GUI in a more abstract form
 
         private readonly IList<TaskData> _dataList;
-        private readonly Page _parentPage;
 
         private bool CheckRenderWasChecked = false;
-
-        public WindowQueueOptions(Page page)
-        {
-            _parentPage = page;
-            InitializeComponent();
-
-            textFolder.Text = Settings.Default.QueueFolder;
-
-            TextPreferredQuality.Visibility = Visibility.Collapsed;
-            ComboPreferredQuality.Visibility = Visibility.Collapsed;
-
-            if (page is PageVodDownload)
-            {
-                throw new UnreachableException();
-            }
-            else if (page is PageClipDownload)
-            {
-                throw new UnreachableException();
-            }
-            else if (page is PageChatDownload)
-            {
-                throw new UnreachableException();
-            }
-            else if (page is PageChatUpdate)
-            {
-                checkVideo.Visibility = Visibility.Collapsed;
-                checkDelayVideo.Visibility = Visibility.Collapsed;
-                checkChatDownload.Visibility = Visibility.Collapsed;
-                TextDownloadFormat.Visibility = Visibility.Collapsed;
-                radioJson.Visibility = Visibility.Collapsed;
-                radioText.Visibility = Visibility.Collapsed;
-                radioHTML.Visibility = Visibility.Collapsed;
-                TextCompression.Visibility = Visibility.Collapsed;
-                RadioCompressionNone.Visibility = Visibility.Collapsed;
-                RadioCompressionGzip.Visibility = Visibility.Collapsed;
-                checkEmbed.Visibility = Visibility.Collapsed;
-                StackThirdPartyEmbed.Visibility = Visibility.Collapsed;
-                checkDelayChat.Visibility = Visibility.Collapsed;
-                checkRender.Visibility = Visibility.Collapsed;
-            }
-            else if (page is PageChatRender)
-            {
-                checkVideo.Visibility = Visibility.Collapsed;
-                checkDelayVideo.Visibility = Visibility.Collapsed;
-                checkChatDownload.Visibility = Visibility.Collapsed;
-                TextDownloadFormat.Visibility = Visibility.Collapsed;
-                radioJson.Visibility = Visibility.Collapsed;
-                radioText.Visibility = Visibility.Collapsed;
-                radioHTML.Visibility = Visibility.Collapsed;
-                TextCompression.Visibility = Visibility.Collapsed;
-                RadioCompressionNone.Visibility = Visibility.Collapsed;
-                RadioCompressionGzip.Visibility = Visibility.Collapsed;
-                checkEmbed.Visibility = Visibility.Collapsed;
-                StackThirdPartyEmbed.Visibility = Visibility.Collapsed;
-                checkDelayChat.Visibility = Visibility.Collapsed;
-                checkRender.IsChecked = true;
-                checkRender.IsEnabled = false;
-            }
-        }
+        private bool ForceRender = false;
 
         public WindowQueueOptions(IList<TaskData> dataList,
             bool forceVideoDownload = false,
             bool forceChatDownload = false,
             bool forceChatUpdate = false,
+            bool forceChatRender = false,
             string[] videoQualities = null,
             int selectedQuality = 0)
         {
@@ -185,6 +127,12 @@ namespace TwitchDownloaderWPF
                 checkChatUpdate.IsChecked = true;
                 checkChatUpdate.IsEnabled = false;
             }
+            if (forceChatRender)
+            {
+                ForceRender = true;
+                checkRender.IsChecked = true;
+                checkRender.IsEnabled = false;
+            }
 
             switch ((ChatFormat)Settings.Default.ChatDownloadType)
             {
@@ -208,7 +156,7 @@ namespace TwitchDownloaderWPF
                     break;
             }
 
-            checkEmbed.IsChecked = _dataList.All(x => !x.IsDownload) ? Settings.Default.ChatEmbedMissing : Settings.Default.ChatEmbedEmotes;
+            checkEmbed.IsChecked = Settings.Default.ChatReplaceEmbeds || (_dataList.All(x => !x.IsDownload) ? Settings.Default.ChatEmbedMissing : Settings.Default.ChatEmbedEmotes);
             CheckReplaceEmbeds.IsChecked = Settings.Default.ChatReplaceEmbeds;
             CheckBttvEmbed.IsChecked = Settings.Default.BTTVEmotes;
             CheckFfzEmbed.IsChecked = Settings.Default.FFZEmotes;
@@ -260,85 +208,7 @@ namespace TwitchDownloaderWPF
 
         private void btnQueue_Click(object sender, RoutedEventArgs e)
         {
-            if (_parentPage != null)
-            {
-                if (_parentPage is PageVodDownload vodDownloadPage)
-                {
-                    throw new UnreachableException();
-                }
-
-                if (_parentPage is PageClipDownload clipDownloadPage)
-                {
-                    throw new UnreachableException();
-                }
-
-                if (_parentPage is PageChatDownload chatDownloadPage)
-                {
-                    throw new UnreachableException();
-                }
-
-                if (_parentPage is PageChatUpdate chatUpdatePage)
-                {
-                    throw new UnreachableException();
-                }
-
-                if (_parentPage is PageChatRender chatRenderPage)
-                {
-                    string folderPath = textFolder.Text;
-                    foreach (string fileName in chatRenderPage.FileNames)
-                    {
-                        if (!Directory.Exists(folderPath))
-                        {
-                            try
-                            {
-                                TwitchHelper.CreateDirectory(folderPath);
-                            }
-                            catch (Exception ex)
-                            {
-                                MessageBox.Show(this, Translations.Strings.InvalidFolderPathMessage, Translations.Strings.InvalidFolderPath, MessageBoxButton.OK, MessageBoxImage.Error);
-
-                                if (Settings.Default.VerboseErrors)
-                                {
-                                    MessageBox.Show(this, ex.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
-                                }
-
-                                return;
-                            }
-                        }
-
-                        string fileFormat = chatRenderPage.comboFormat.SelectedItem.ToString()!;
-                        string filePath = Path.Combine(folderPath, Path.GetFileNameWithoutExtension(fileName) + "." + fileFormat.ToLower());
-                        ChatRenderOptions renderOptions = MainWindow.pageChatRender.GetOptions(filePath);
-                        renderOptions.InputFile = fileName;
-                        renderOptions.FileCollisionCallback = HandleFileCollisionCallback;
-
-                        ChatRenderTask renderTask = new ChatRenderTask
-                        {
-                            DownloadOptions = renderOptions,
-                            Info =
-                            {
-                                Title = Path.GetFileNameWithoutExtension(filePath)
-                            }
-                        };
-
-                        if (ThumbnailService.TryGetThumb(ThumbnailService.THUMBNAIL_MISSING_URL, out var image))
-                        {
-                            renderTask.Info.Thumbnail = image;
-                        }
-
-                        lock (PageQueue.TaskLock)
-                        {
-                            PageQueue.taskList.Add(renderTask);
-                        }
-
-                        this.Close();
-                    }
-                }
-            }
-            else if (_dataList.Count > 0)
-            {
-                EnqueueDataList();
-            }
+            EnqueueDataList();
         }
 
         private void EnqueueDataList()
@@ -429,7 +299,7 @@ namespace TwitchDownloaderWPF
                 TrimBeginning = CheckTrimStart.IsChecked.GetValueOrDefault(),
                 TrimBeginningTime = new TimeSpan((int)NumTrimStartHour.Value, (int)NumTrimStartMinute.Value, (int)NumTrimStartSecond.Value),
                 TrimEnding = CheckTrimEnd.IsChecked.GetValueOrDefault(),
-                TrimEndingTime = taskData.Length - GetTrimEnd(),
+                TrimEndingTime = taskData.Length - GetRelativeTrimEnd(),
                 DownloadThreads = Settings.Default.VodDownloadThreads,
                 ThrottleKib = Settings.Default.DownloadThrottleEnabled
                                 ? Settings.Default.MaximumBandwidthKib
@@ -528,7 +398,7 @@ namespace TwitchDownloaderWPF
                 TrimBeginning = CheckTrimStart.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit), // Clips can't be trimmed
                 TrimBeginningTime = GetTrimStart().TotalSeconds,
                 TrimEnding = CheckTrimEnd.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit),
-                TrimEndingTime = (taskData.Length - GetTrimEnd()).TotalSeconds,
+                TrimEndingTime = (taskData.Length - GetRelativeTrimEnd()).TotalSeconds,
                 FileCollisionCallback = HandleFileCollisionCallback,
                 DelayDownload = checkDelayChat.IsChecked.GetValueOrDefault(),
                 DownloadThreads = Settings.Default.ChatDownloadThreads
@@ -594,7 +464,7 @@ namespace TwitchDownloaderWPF
                 TrimBeginning = CheckTrimStart.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit), // Clips can't be trimmed
                 TrimBeginningTime = GetTrimStart().TotalSeconds,
                 TrimEnding = CheckTrimEnd.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit),
-                TrimEndingTime = (taskData.Length - GetTrimEnd()).TotalSeconds,
+                TrimEndingTime = (taskData.Length - GetRelativeTrimEnd()).TotalSeconds,
                 FileCollisionCallback = HandleFileCollisionCallback
             };
             if (radioJson.IsChecked == true)
@@ -655,7 +525,7 @@ namespace TwitchDownloaderWPF
                     taskData.StreamerName,
                     taskData.StreamerId,
                     CheckTrimStart.IsChecked.GetValueOrDefault() ? GetTrimStart() : TimeSpan.Zero,
-                    CheckTrimEnd.IsChecked.GetValueOrDefault() ? taskData.Length - GetTrimEnd() : taskData.Length,
+                    CheckTrimEnd.IsChecked.GetValueOrDefault() ? taskData.Length - GetRelativeTrimEnd() : taskData.Length,
                     taskData.Length,
                     taskData.Views,
                     taskData.Game,
@@ -667,13 +537,11 @@ namespace TwitchDownloaderWPF
             renderOptions.FileCollisionCallback = HandleFileCollisionCallback;
 
             // No need to override if dependant task is already trimmed
-            if (dependantTask is null && CheckTrimStart.IsChecked.GetValueOrDefault())
+            // Both StartOverride and EndOverride need to be set if we want to trim
+            if (dependantTask is null && (CheckTrimStart.IsChecked.GetValueOrDefault() || CheckTrimEnd.IsChecked.GetValueOrDefault()))
             {
-                renderOptions.StartOverride = (int)GetTrimStart().TotalSeconds;
-            }
-            if (dependantTask is null && CheckTrimEnd.IsChecked.GetValueOrDefault())
-            {
-                renderOptions.EndOverride = (int)(taskData.Length - GetTrimEnd()).TotalSeconds;
+                renderOptions.StartOverride = CheckTrimStart.IsChecked.GetValueOrDefault() ? (int)GetTrimStart().TotalSeconds : 0;
+                renderOptions.EndOverride = CheckTrimEnd.IsChecked.GetValueOrDefault() ? (int)Math.Ceiling((taskData.Length - GetRelativeTrimEnd()).TotalSeconds) : (int)Math.Ceiling(taskData.Length.TotalSeconds);
             }
 
             ChatRenderTask renderTask = new ChatRenderTask
@@ -700,7 +568,7 @@ namespace TwitchDownloaderWPF
         private bool ValidateTrims()
         {
             var startSeconds = CheckTrimStart.IsChecked.GetValueOrDefault() ? GetTrimStart() : TimeSpan.Zero;
-            var endSeconds = CheckTrimEnd.IsChecked.GetValueOrDefault() ? GetTrimEnd() : TimeSpan.Zero;
+            var endSeconds = CheckTrimEnd.IsChecked.GetValueOrDefault() ? GetRelativeTrimEnd() : TimeSpan.Zero;
 
             int incompatibleCount = 0;
             foreach (var taskData in _dataList)
@@ -777,7 +645,7 @@ namespace TwitchDownloaderWPF
             return new TimeSpan((int)NumTrimStartHour.Value, (int)NumTrimStartMinute.Value, (int)NumTrimStartSecond.Value);
         }
 
-        private TimeSpan GetTrimEnd()
+        private TimeSpan GetRelativeTrimEnd()
         {
             return new TimeSpan((int)NumTrimEndHour.Value, (int)NumTrimEndMinute.Value, (int)NumTrimEndSecond.Value);
         }
@@ -837,7 +705,7 @@ namespace TwitchDownloaderWPF
             CheckFfzEmbed.IsEnabled = embedSettingsEnabled;
             CheckStvEmbed.IsEnabled = embedSettingsEnabled;
 
-            checkRender.IsEnabled = _parentPage is not PageChatRender && (
+            checkRender.IsEnabled = !ForceRender && (
                 (checkChatDownload.IsChecked.GetValueOrDefault() && radioJson.IsChecked.GetValueOrDefault()) || // Download then render
                 (checkChatUpdate.IsChecked.GetValueOrDefault() && radioJson.IsChecked.GetValueOrDefault()) || // Update then render
                 _dataList is null ||

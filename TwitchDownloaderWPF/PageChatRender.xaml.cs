@@ -19,6 +19,7 @@ using TwitchDownloaderCore.TwitchObjects;
 using TwitchDownloaderWPF.Extensions;
 using TwitchDownloaderWPF.Models;
 using TwitchDownloaderWPF.Properties;
+using TwitchDownloaderWPF.TwitchTasks;
 using TwitchDownloaderWPF.Utils;
 using WpfAnimatedGif;
 using MessageBox = System.Windows.MessageBox;
@@ -31,9 +32,8 @@ namespace TwitchDownloaderWPF
     /// </summary>
     public partial class PageChatRender : Page
     {
-        public List<string> ffmpegLog = [];
-        public SKFontManager fontManager = SKFontManager.CreateDefault();
-        public string[] FileNames = [];
+        private readonly SKFontManager fontManager = SKFontManager.CreateDefault();
+        private TaskData taskData;
         private CancellationTokenSource _cancellationTokenSource;
 
         public PageChatRender()
@@ -50,19 +50,20 @@ namespace TwitchDownloaderWPF
             }
         }
 
-        private void btnBrowse_Click(object sender, RoutedEventArgs e)
+        private async void btnBrowse_Click(object sender, RoutedEventArgs e)
         {
-            OpenFileDialog openFileDialog = new OpenFileDialog();
-            openFileDialog.Filter = "JSON Files | *.json;*.json.gz";
-            openFileDialog.Multiselect = true;
+            OpenFileDialog openFileDialog = new()
+            {
+                Filter = "JSON Files | *.json;*.json.gz"
+            };
 
             if (openFileDialog.ShowDialog() == false)
             {
                 return;
             }
 
-            FileNames = openFileDialog.FileNames;
-            textJson.Text = string.Join("&&", FileNames);
+            taskData = await TaskData.FromJsonFileAsync(openFileDialog.FileName);
+            textJson.Text = taskData.FilePath;
             UpdateActionButtons(false);
         }
 
@@ -73,13 +74,6 @@ namespace TwitchDownloaderWPF
                 SplitBtnRender.Visibility = Visibility.Collapsed;
                 BtnEnqueue.Visibility = Visibility.Collapsed;
                 BtnCancel.Visibility = Visibility.Visible;
-                return;
-            }
-            if (FileNames.Length > 1)
-            {
-                SplitBtnRender.Visibility = Visibility.Collapsed;
-                BtnEnqueue.Visibility = Visibility.Visible;
-                BtnCancel.Visibility = Visibility.Collapsed;
                 return;
             }
             SplitBtnRender.Visibility = Visibility.Visible;
@@ -346,18 +340,15 @@ namespace TwitchDownloaderWPF
 
         private bool ValidateInputs()
         {
-            if (FileNames.Length == 0)
+            if (string.IsNullOrEmpty(taskData?.FilePath))
             {
                 AppendLog(Translations.Strings.ErrorLog + Translations.Strings.NoJsonFilesSelected);
                 return false;
             }
-            foreach (string fileName in FileNames)
+            if (!File.Exists(taskData.FilePath))
             {
-                if (!File.Exists(fileName))
-                {
-                    AppendLog(Translations.Strings.ErrorLog + Translations.Strings.FileNotFound + Path.GetFileName(fileName));
-                    return false;
-                }
+                AppendLog(Translations.Strings.ErrorLog + Translations.Strings.FileNotFound + Path.GetFileName(taskData.FilePath));
+                return false;
             }
 
             try
@@ -622,9 +613,12 @@ namespace TwitchDownloaderWPF
 
                 SaveSettings();
 
+                
+                List<string> ffmpegLog = [];
+
                 ChatRenderOptions options = GetOptions(saveFileDialog.FileName);
 
-                var renderProgress = new WpfTaskProgress((LogLevel)Settings.Default.LogLevels, SetPercent, SetStatus, AppendLog, s => ffmpegLog.Add(s));
+                var renderProgress = new WpfTaskProgress((LogLevel)Settings.Default.LogLevels, SetPercent, SetStatus, AppendLog, ffmpegLog.Add);
                 ChatRenderer currentRender = new ChatRenderer(options, renderProgress);
                 try
                 {
@@ -666,7 +660,6 @@ namespace TwitchDownloaderWPF
 
                 SetImage("Images/ppOverheat.gif", true);
                 statusMessage.Text = Translations.Strings.StatusRendering;
-                ffmpegLog.Clear();
                 _cancellationTokenSource = new CancellationTokenSource();
                 UpdateActionButtons(true);
                 try
@@ -742,7 +735,7 @@ namespace TwitchDownloaderWPF
 
         private void EnqueueRender()
         {
-            var queueOptions = new WindowQueueOptions(this)
+            var queueOptions = new WindowQueueOptions([taskData], forceChatRender: true)
             {
                 Owner = Application.Current.MainWindow,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner
@@ -755,12 +748,12 @@ namespace TwitchDownloaderWPF
             SplitBtnRender_Click(sender, e);
         }
 
-        private void TextJson_TextChanged(object sender, TextChangedEventArgs e)
+        private async void TextJson_TextChanged(object sender, TextChangedEventArgs e)
         {
             if (!IsInitialized)
                 return;
 
-            FileNames = textJson.Text.Split("&&", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            taskData = await TaskData.FromJsonFileAsync(textJson.Text);
             UpdateActionButtons(false);
         }
 
