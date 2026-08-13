@@ -111,8 +111,11 @@ namespace TwitchDownloaderWPF.TwitchTasks
         public TimeSpan Length { get; set; }
         public bool TrimStart { get; set; }
         public TimeSpan TrimStartTime { get; set; }
+        public TimeSpan OutputTrimStartTime => TrimStart ? TrimStartTime : TimeSpan.Zero;
         public bool TrimEnd { get; set; }
-        public TimeSpan TrimEndTime { get; set; }
+        public TimeSpan RelativeTrimEndTime { get; set; }
+        public TimeSpan TrimEndTime { get => Length - RelativeTrimEndTime; set => RelativeTrimEndTime = Length - value; }
+        public TimeSpan OutputTrimEndTime => TrimEnd ? TrimEndTime : Length;
         public int Views { get; set; }
         public string Game { get; set; }
 
