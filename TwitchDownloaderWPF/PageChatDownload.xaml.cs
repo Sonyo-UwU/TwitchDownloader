@@ -24,7 +24,7 @@ namespace TwitchDownloaderWPF
     /// </summary>
     public partial class PageChatDownload : Page
     {
-        private TaskData taskData;
+        private TaskData taskData = new();
         private CancellationTokenSource _cancellationTokenSource;
 
         public PageChatDownload()
@@ -577,9 +577,7 @@ namespace TwitchDownloaderWPF
         private void MenuItemEnqueue_Click(object sender, RoutedEventArgs e)
         {
             var queueOptions = new WindowQueueOptions([taskData],
-                forceChatDownload: true,
-                trimStart: CheckTrimStart.IsChecked.GetValueOrDefault() ? new TimeSpan((int)numStartHour.Value, (int)numStartMinute.Value, (int)numStartSecond.Value) : null,
-                trimEnd: CheckTrimEnd.IsChecked.GetValueOrDefault() ? new TimeSpan((int)numEndHour.Value, (int)numEndMinute.Value, (int)numEndSecond.Value) : null)
+                forceChatDownload: true)
             {
                 Owner = Application.Current.MainWindow,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner

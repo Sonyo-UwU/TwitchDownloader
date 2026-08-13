@@ -26,7 +26,7 @@ namespace TwitchDownloaderWPF
     /// </summary>
     public partial class PageClipDownload : Page
     {
-        private TaskData taskData;
+        private TaskData taskData = new();
         private CancellationTokenSource _cancellationTokenSource;
 
         public PageClipDownload()

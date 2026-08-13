@@ -29,7 +29,7 @@ namespace TwitchDownloaderWPF
     /// </summary>
     public partial class PageVodDownload : Page
     {
-        private TaskData taskData;
+        private TaskData taskData = new();
         private CancellationTokenSource _cancellationTokenSource;
 
         public PageVodDownload()
@@ -55,6 +55,7 @@ namespace TwitchDownloaderWPF
             numStartHour.IsEnabled = isEnabled;
             numStartMinute.IsEnabled = isEnabled;
             numStartSecond.IsEnabled = isEnabled;
+            taskData.TrimStart = isEnabled;
         }
 
         private void SetEnabledTrimEnd(bool isEnabled)
@@ -62,6 +63,7 @@ namespace TwitchDownloaderWPF
             numEndHour.IsEnabled = isEnabled;
             numEndMinute.IsEnabled = isEnabled;
             numEndSecond.IsEnabled = isEnabled;
+            taskData.TrimEnd = isEnabled;
         }
 
         private void Hyperlink_RequestNavigate(object sender, RequestNavigateEventArgs e)
@@ -86,8 +88,6 @@ namespace TwitchDownloaderWPF
 
             try
             {
-                taskData = await TaskData.FromVodIdAsync(videoId);
-
                 Task<TaskData> taskVideoData = TaskData.FromVodIdAsync(videoId);
                 Task<GqlVideoTokenResponse> taskAccessToken = TwitchHelper.GetVideoToken(videoId, TextOauth.Text);
                 await Task.WhenAll(taskVideoData, taskAccessToken);
@@ -169,6 +169,7 @@ namespace TwitchDownloaderWPF
                 numEndSecond.Value = taskData.Length.Seconds;
                 labelLength.Text = taskData.Length.ToString("c");
 
+                SetTrimTimes();
                 UpdateVideoSizeEstimates();
 
                 SetEnabled(true);
@@ -205,17 +206,27 @@ namespace TwitchDownloaderWPF
                 ThrottleKib = Settings.Default.DownloadThrottleEnabled
                     ? Settings.Default.MaximumBandwidthKib
                     : -1,
-                Filename = filename ?? Path.Combine(folder, FilenameService.GetFilename(Settings.Default.TemplateVod, textTitle.Text, taskData.Id, taskData.Time, textStreamer.Text, taskData.StreamerId,
-                    checkStart.IsChecked == true ? new TimeSpan((int)numStartHour.Value, (int)numStartMinute.Value, (int)numStartSecond.Value) : TimeSpan.Zero,
-                    checkEnd.IsChecked == true ? new TimeSpan((int)numEndHour.Value, (int)numEndMinute.Value, (int)numEndSecond.Value) : taskData.Length,
-                    taskData.Length, taskData.Views, taskData.Game) + FilenameService.GuessVodFileExtension(((ComboBoxItem)comboQuality.SelectedItem).Tag.ToString())),
+                Filename = filename ?? Path.Combine(folder,
+                    FilenameService.GetFilename(
+                        Settings.Default.TemplateVod,
+                        textTitle.Text,
+                        taskData.Id,
+                        taskData.Time,
+                        textStreamer.Text,
+                        taskData.StreamerId,
+                        taskData.OutputTrimStartTime,
+                        taskData.OutputTrimEndTime,
+                        taskData.Length,
+                        taskData.Views,
+                        taskData.Game) +
+                    FilenameService.GuessVodFileExtension(((ComboBoxItem)comboQuality.SelectedItem).Tag.ToString())),
                 Oauth = TextOauth.Text,
                 Quality = ((ComboBoxItem)comboQuality.SelectedItem).Tag.ToString(),
                 Id = long.Parse(taskData.Id),
-                TrimBeginning = checkStart.IsChecked.GetValueOrDefault(),
-                TrimBeginningTime = new TimeSpan((int)numStartHour.Value, (int)numStartMinute.Value, (int)numStartSecond.Value),
-                TrimEnding = checkEnd.IsChecked.GetValueOrDefault(),
-                TrimEndingTime = new TimeSpan((int)numEndHour.Value, (int)numEndMinute.Value, (int)numEndSecond.Value),
+                TrimBeginning = taskData.TrimStart,
+                TrimBeginningTime = taskData.TrimStartTime,
+                TrimEnding = taskData.TrimEnd,
+                TrimEndingTime = taskData.TrimEndTime,
                 FfmpegPath = "ffmpeg",
                 TempFolder = Settings.Default.TempPath
             };
@@ -232,19 +243,13 @@ namespace TwitchDownloaderWPF
         {
             int selectedIndex = comboQuality.SelectedIndex;
 
-            var trimStart = checkStart.IsChecked == true
-                ? new TimeSpan((int)numStartHour.Value, (int)numStartMinute.Value, (int)numStartSecond.Value)
-                : TimeSpan.Zero;
-            var trimEnd = checkEnd.IsChecked == true
-                ? new TimeSpan((int)numEndHour.Value, (int)numEndMinute.Value, (int)numEndSecond.Value)
-                : taskData.Length;
 
             foreach (var item in comboQuality.Items.Cast<ComboBoxItem>())
             {
                 var quality = (IVideoQuality<M3U8.Stream>)item.Tag;
                 var bandwidth = quality.Item.StreamInfo.Bandwidth;
 
-                var sizeInBytes = VideoSizeEstimator.EstimateVideoSize(bandwidth, trimStart, trimEnd);
+                var sizeInBytes = VideoSizeEstimator.EstimateVideoSize(bandwidth, taskData.OutputTrimStartTime, taskData.OutputTrimEndTime);
                 if (sizeInBytes == 0)
                 {
                     item.Content = quality.Name;
@@ -289,25 +294,8 @@ namespace TwitchDownloaderWPF
 
         public bool ValidateInputs()
         {
-            if (checkStart.IsChecked.GetValueOrDefault())
-            {
-                var beginTime = new TimeSpan((int)numStartHour.Value, (int)numStartMinute.Value, (int)numStartSecond.Value);
-                if (taskData.Length > TimeSpan.Zero && beginTime >= taskData.Length)
-                {
-                    return false;
-                }
-
-                if (checkEnd.IsChecked.GetValueOrDefault())
-                {
-                    var endTime = new TimeSpan((int)numEndHour.Value, (int)numEndMinute.Value, (int)numEndSecond.Value);
-                    if (endTime.TotalSeconds < beginTime.TotalSeconds)
-                    {
-                        return false;
-                    }
-                }
-            }
-
-            return true;
+            return (!taskData.TrimStart || taskData.Length <= TimeSpan.Zero || taskData.TrimStartTime < taskData.Length) &&
+                   (!taskData.TrimEnd || taskData.TrimEndTime >= taskData.OutputTrimStartTime);
         }
 
         private void SetPercent(int percent)
@@ -332,6 +320,12 @@ namespace TwitchDownloaderWPF
             textLog.Dispatcher.BeginInvoke(() =>
                 textLog.AppendText(message + Environment.NewLine)
             );
+        }
+
+        private void SetTrimTimes()
+        {
+            taskData.TrimStartTime = new((int)numStartHour.Value, (int)numStartMinute.Value, (int)numStartSecond.Value);
+            taskData.TrimEndTime = new((int)numEndHour.Value, (int)numEndMinute.Value, (int)numEndSecond.Value);
         }
 
         private void BtnClearLog_Click(object sender, RoutedEventArgs e)
@@ -428,10 +422,19 @@ namespace TwitchDownloaderWPF
             SaveFileDialog saveFileDialog = new SaveFileDialog
             {
                 Filter = comboQuality.Text.Contains("Audio", StringComparison.OrdinalIgnoreCase) ? "M4A Files | *.m4a" : "MP4 Files | *.mp4",
-                FileName = FilenameService.GetFilename(Settings.Default.TemplateVod, textTitle.Text, taskData.Id, taskData.Time, textStreamer.Text, taskData.StreamerId,
-                    checkStart.IsChecked == true ? new TimeSpan((int)numStartHour.Value, (int)numStartMinute.Value, (int)numStartSecond.Value) : TimeSpan.Zero,
-                    checkEnd.IsChecked == true ? new TimeSpan((int)numEndHour.Value, (int)numEndMinute.Value, (int)numEndSecond.Value) : taskData.Length,
-                    taskData.Length, taskData.Views, taskData.Game) + FilenameService.GuessVodFileExtension(comboQuality.Text)
+                FileName = FilenameService.GetFilename(
+                    Settings.Default.TemplateVod,
+                    textTitle.Text,
+                    taskData.Id,
+                    taskData.Time,
+                    textStreamer.Text,
+                    taskData.StreamerId,
+                    taskData.OutputTrimStartTime,
+                    taskData.OutputTrimEndTime,
+                    taskData.Length,
+                    taskData.Views,
+                    taskData.Game) +
+                    FilenameService.GuessVodFileExtension(comboQuality.Text)
             };
             if (saveFileDialog.ShowDialog() == false)
             {
@@ -517,8 +520,6 @@ namespace TwitchDownloaderWPF
             {
                 var queueOptions = new WindowQueueOptions([taskData],
                     forceVideoDownload: true,
-                    trimStart: checkStart.IsChecked.GetValueOrDefault() ? new TimeSpan((int)numStartHour.Value, (int)numStartMinute.Value, (int)numStartSecond.Value) : null,
-                    trimEnd: checkEnd.IsChecked.GetValueOrDefault() ? new TimeSpan((int)numEndHour.Value, (int)numEndMinute.Value, (int)numEndSecond.Value) : null,
                     videoQualities: comboQuality.Items.Cast<ComboBoxItem>().Select(x => x.Tag.ToString()).ToArray(),
                     selectedQuality: comboQuality.SelectedIndex)
                 {
@@ -535,31 +536,37 @@ namespace TwitchDownloaderWPF
 
         private void numEndHour_ValueChanged(object sender, HandyControl.Data.FunctionEventArgs<double> e)
         {
+            SetTrimTimes();
             UpdateVideoSizeEstimates();
         }
 
         private void numEndMinute_ValueChanged(object sender, HandyControl.Data.FunctionEventArgs<double> e)
         {
+            SetTrimTimes();
             UpdateVideoSizeEstimates();
         }
 
         private void numEndSecond_ValueChanged(object sender, HandyControl.Data.FunctionEventArgs<double> e)
         {
+            SetTrimTimes();
             UpdateVideoSizeEstimates();
         }
 
         private void numStartHour_ValueChanged(object sender, HandyControl.Data.FunctionEventArgs<double> e)
         {
+            SetTrimTimes();
             UpdateVideoSizeEstimates();
         }
 
         private void numStartMinute_ValueChanged(object sender, HandyControl.Data.FunctionEventArgs<double> e)
         {
+            SetTrimTimes();
             UpdateVideoSizeEstimates();
         }
 
         private void numStartSecond_ValueChanged(object sender, HandyControl.Data.FunctionEventArgs<double> e)
         {
+            SetTrimTimes();
             UpdateVideoSizeEstimates();
         }
 
