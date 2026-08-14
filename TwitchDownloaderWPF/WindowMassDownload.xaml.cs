@@ -41,10 +41,12 @@ namespace TwitchDownloaderWPF
             if (downloaderType == DownloadType.Video)
             {
                 ComboSortByDate.Visibility = Visibility.Collapsed;
+                ComboSortByVideoType.SelectedIndex = Settings.Default.SearchVideoType;
             }
             else if (downloaderType == DownloadType.Clip)
             {
                 ComboSortByVideoType.Visibility = Visibility.Collapsed;
+                ComboSortByDate.SelectedIndex = Settings.Default.SearchDateSorting;
             }
             btnNext.IsEnabled = false;
             btnPrev.IsEnabled = false;
@@ -323,16 +325,26 @@ namespace TwitchDownloaderWPF
 
         private async void ComboSortByDate_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            period = ((ComboBoxItem)ComboSortByDate.SelectedItem).Tag.ToString();
-            ResetLists();
-            await UpdateList();
+            if (IsInitialized)
+            {
+                period = ((ComboBoxItem)ComboSortByDate.SelectedItem).Tag.ToString();
+                Settings.Default.SearchDateSorting = ComboSortByDate.SelectedIndex;
+                Settings.Default.Save();
+                ResetLists();
+                await UpdateList();
+            }
         }
 
         private async void ComboSortByVideoType_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            videoType = ((ComboBoxItem)ComboSortByVideoType.SelectedItem).Tag.ToString();
-            ResetLists();
-            await UpdateList();
+            if (IsInitialized)
+            {
+                videoType = ((ComboBoxItem)ComboSortByVideoType.SelectedItem).Tag.ToString();
+                Settings.Default.SearchVideoType = ComboSortByVideoType.SelectedIndex;
+                Settings.Default.Save();
+                ResetLists();
+                await UpdateList();
+            }
         }
 
         private void btnSelectAll_Click(object sender, RoutedEventArgs e)
