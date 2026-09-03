@@ -430,6 +430,7 @@ namespace TwitchDownloaderCore.Models
                     const string KEY_CODECS = "CODECS=\"";
                     const string KEY_RESOLUTION = "RESOLUTION=";
                     const string KEY_FRAMERATE = "FRAME-RATE=";
+                    const string KEY_VIDEO = "VIDEO=\"";
                     const string KEY_STABLE_VARIANT_ID = "STABLE-VARIANT-ID=\"";
                     const string KEY_IVS_NAME = "IVS-NAME=\"";
                     const string KEY_IVS_GROUPS = "IVS-GROUPS=\"";
@@ -458,6 +459,10 @@ namespace TwitchDownloaderCore.Models
                         else if (text.StartsWith(KEY_FRAMERATE))
                         {
                             streamInfo.Framerate = ParsingHelpers.ParseDecimalValue(text, KEY_FRAMERATE, false);
+                        }
+                        else if (text.StartsWith(KEY_VIDEO))
+                        {
+                            streamInfo.Video = ParsingHelpers.ParseStringValue(text, KEY_VIDEO);
                         }
                         else if (text.StartsWith(KEY_STABLE_VARIANT_ID))
                         {
