@@ -10,13 +10,13 @@ using TwitchDownloaderCore.TwitchObjects.Gql;
 
 namespace TwitchDownloaderCore
 {
-    public sealed partial class LiveDownloader
+    public sealed partial class StreamDownloader
     {
         private readonly string _cacheDir;
-        private readonly LiveDownloadOptions _downloadOptions;
+        private readonly StreamDownloadOptions _downloadOptions;
         private readonly ITaskProgress _progress;
 
-        public LiveDownloader(LiveDownloadOptions downloadOptions, ITaskProgress progress = default)
+        public StreamDownloader(StreamDownloadOptions downloadOptions, ITaskProgress progress = default)
         {
             _downloadOptions = downloadOptions;
             _progress = progress;
