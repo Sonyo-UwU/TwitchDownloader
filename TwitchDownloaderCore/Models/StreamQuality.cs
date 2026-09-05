@@ -9,7 +9,6 @@
         public string Video { get; set; }
         public string Name { get; set; }
         public string Path { get; set; }
-        public bool IsAvailable => !string.IsNullOrEmpty(Path);
-        public bool IsAudio => Video.Contains("audio_only", StringComparison.OrdinalIgnoreCase);
+        public bool IsAudio => Video.Contains("audio_only", StringComparison.OrdinalIgnoreCase) || (Resolution.Width == 0 && Resolution.Height == 0);
     }
 }

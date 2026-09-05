@@ -5,7 +5,7 @@ namespace TwitchDownloaderCore.Models
     public sealed class StreamVideoQuality : IVideoQuality<StreamQuality>
     {
         public StreamQuality Item { get; }
-        public string Name => !string.IsNullOrEmpty(Item.Name) ? Item.Name : Item.Video;
+        public string Name { get; }
 
         public Resolution Resolution => Item.Resolution;
 
@@ -19,9 +19,10 @@ namespace TwitchDownloaderCore.Models
 
         public VideoOrientation Orientation => VideoOrientation.Landscape;
 
-        internal StreamVideoQuality(StreamQuality item)
+        internal StreamVideoQuality(StreamQuality item, string name)
         {
             Item = item;
+            Name = name;
         }
     }
 }

@@ -12,9 +12,9 @@ namespace TwitchDownloaderCore
 {
     public sealed partial class StreamDownloader
     {
-        private readonly string _cacheDir;
         private readonly StreamDownloadOptions _downloadOptions;
         private readonly ITaskProgress _progress;
+        private readonly string _cacheDir;
 
         public StreamDownloader(StreamDownloadOptions downloadOptions, ITaskProgress progress = default)
         {
@@ -72,8 +72,18 @@ namespace TwitchDownloaderCore
             }
 
             var m3u8 = M3U8.Parse(playlistString);
-            var qualities = VideoQualities.FromStreamM3U8(m3u8);
-            return qualities.GetQuality(_downloadOptions.Quality);
+            var (availableQualities, unavailableQualities) = VideoQualities.FromStreamM3U8(m3u8);
+            var allQualities = new StreamVideoQualities(availableQualities.Qualities.Concat(unavailableQualities.Qualities).ToList());
+
+            var quality = allQualities.GetQuality(_downloadOptions.Quality);
+            if (quality.Path is null)
+            {
+                var fallback = availableQualities.GetQuality(_downloadOptions.Quality);
+                _progress.LogWarning($"Quality {quality.Name} is unavailable for reasons: {quality.Item.Video}. Switching to {fallback.Name}");
+                return fallback;
+            }
+
+            return quality;
         }
 
         private async Task<int> RunFfmpegDownload(IVideoQuality<StreamQuality> quality, CancellationToken cancellationToken)
@@ -162,7 +172,6 @@ namespace TwitchDownloaderCore
 
         [GeneratedRegex(@"(?<=time=)(\d\d):(\d\d):(\d\d)\.(\d\d)")]
         private static partial Regex EncodingTimeRegex { get; }
-
         private void HandleFfmpegOutput(string output)
         {
             var encodingTimeMatch = EncodingTimeRegex.Match(output);

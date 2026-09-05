@@ -130,52 +130,40 @@ namespace TwitchDownloaderCore.Models
             return name;
         }
 
-        public static IVideoQualities<StreamQuality> FromStreamM3U8(M3U8 m3u8)
+        public static (IVideoQualities<StreamQuality> available, IVideoQualities<StreamQuality> unavailable) FromStreamM3U8(M3U8 m3u8)
         {
             var unavailableMedia = m3u8.ParseUnavailableMedia();
-            var unavailableStreams = unavailableMedia.Select(x =>
+            var unavailableQualities = BuildQualityList(unavailableMedia.Select(x => new StreamQuality()
             {
-                var streamQuality = new StreamQuality()
-                {
-                    Bandwidth = x.Bandwidth,
-                    Codecs = x.Codecs.Split(','),
-                    Resolution = string.IsNullOrEmpty(x.Resolution) ? M3U8.Stream.ExtStreamInfo.StreamResolution.None : M3U8.Stream.ExtStreamInfo.StreamResolution.Parse(x.Resolution),
-                    Framerate = x.FrameRate,
-                    Name = x.Name,
-                    Path = null,
-                    Video = ""
-                };
-                return new StreamVideoQuality(streamQuality);
-            });
-
-            var availableStreams = m3u8.Streams.Select(x =>
-            {
-                var streamQuality = new StreamQuality()
-                {
-                    Bandwidth = x.StreamInfo.Bandwidth,
-                    Codecs = x.StreamInfo.Codecs,
-                    Resolution = x.StreamInfo.Resolution,
-                    Framerate = x.StreamInfo.Framerate,
-                    Name = x.StreamInfo.IvsName,
-                    Path = x.Path,
-                    Video = x.StreamInfo.Video
-                };
-                return new StreamVideoQuality(streamQuality);
-            });
-
-            var allStreams = unavailableStreams
-                .Where(x => availableStreams.All(y => x.Path != y.Path))
-                .Concat(availableStreams)
-                .ToArray();
-
-            var sortedQualities = allStreams
-                .OrderBy(x => !x.Item.IsAvailable)
-                .ThenByDescending(x => x.Resolution.Height)
+                Bandwidth = x.Bandwidth,
+                Codecs = x.Codecs.Split(','),
+                Resolution = string.IsNullOrEmpty(x.Resolution) ? M3U8.Stream.ExtStreamInfo.StreamResolution.None : M3U8.Stream.ExtStreamInfo.StreamResolution.Parse(x.Resolution),
+                Framerate = x.FrameRate,
+                Name = x.Name,
+                Path = null,
+                Video = string.Join(',', x.FilterReasons)
+            }).ToList(), x => !string.IsNullOrEmpty(x.Name) ? x.Name : x.Video, (quality, name) => new StreamVideoQuality(quality, name))
+                .OrderByDescending(x => x.Resolution.Height)
                 .ThenByDescending(x => x.Framerate)
                 .ThenByDescending(x => x.Name)
-                .ToArray();
+                .ToList();
 
-            return new StreamVideoQualities(sortedQualities);
+            var availableQualities = BuildQualityList(m3u8.Streams.Select(x => new StreamQuality()
+            {
+                Bandwidth = x.StreamInfo.Bandwidth,
+                Codecs = x.StreamInfo.Codecs,
+                Resolution = x.StreamInfo.Resolution,
+                Framerate = x.StreamInfo.Framerate,
+                Name = x.StreamInfo.IvsName,
+                Path = x.Path,
+                Video = x.StreamInfo.Video
+            }).ToList(), x => !string.IsNullOrEmpty(x.Name) ? x.Name : x.Video, (quality, name) => new StreamVideoQuality(quality, name))
+                .OrderByDescending(x => x.Resolution.Height)
+                .ThenByDescending(x => x.Framerate)
+                .ThenByDescending(x => x.Name)
+                .ToList();
+
+            return (new StreamVideoQualities(availableQualities), new StreamVideoQualities(unavailableQualities));
         }
 
         public static IVideoQualities<ClipQuality> FromClip(ShareClipRenderStatusClip clip)

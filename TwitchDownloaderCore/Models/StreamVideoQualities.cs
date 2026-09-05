@@ -17,7 +17,7 @@ namespace TwitchDownloaderCore.Models
                 return null;
             }
 
-            var bestQuality = Qualities.FirstOrDefault(x => x.IsSource && x.Item.IsAvailable);
+            var bestQuality = Qualities.FirstOrDefault(x => x.IsSource);
 
             bestQuality ??= Qualities
                 .WhereOnlyIf(x => x.Resolution.Width > x.Resolution.Height, Qualities.All(x => x.Resolution.HasWidth))
@@ -35,7 +35,7 @@ namespace TwitchDownloaderCore.Models
                 return foundQuality;
             }
 
-            foreach (var quality in Qualities.Where(x => x.Item.IsAvailable))
+            foreach (var quality in Qualities)
             {
                 var framerate = (int)Math.Round(quality.Framerate);
                 var framerateString = qualityString!.EndsWith('p') && framerate == 30
@@ -59,13 +59,13 @@ namespace TwitchDownloaderCore.Models
             }
 
             var worstQuality = Qualities
-                .Where(x => !x.Item.IsAudio && x.Item.IsAvailable)
+                .Where(x => !x.Item.IsAudio)
                 .WhereOnlyIf(x => x.Resolution.Width > x.Resolution.Height, Qualities.All(x => x.Resolution.HasWidth))
                 .MinBy(x => x.Resolution.Height);
 
-            worstQuality ??= Qualities.Where(x => !x.Item.IsAudio && x.Item.IsAvailable).MinBy(x => x.Resolution.Height);
+            worstQuality ??= Qualities.Where(x => !x.Item.IsAudio).MinBy(x => x.Resolution.Height);
 
-            return worstQuality ?? Qualities.LastOrDefault(x => !x.Item.IsAudio && x.Item.IsAvailable);
+            return worstQuality ?? Qualities.LastOrDefault(x => !x.Item.IsAudio);
         }
 
         protected override bool TryGetKeywordQuality(string qualityString, out IVideoQuality<StreamQuality> quality)
@@ -92,7 +92,7 @@ namespace TwitchDownloaderCore.Models
             }
 
             if (qualityString.Contains("audio", StringComparison.OrdinalIgnoreCase)
-                && Qualities.FirstOrDefault(x => x.Item.IsAvailable && x.Item.IsAudio) is { } audioStream)
+                && Qualities.FirstOrDefault(x => x.Item.IsAudio) is { } audioStream)
             {
                 quality = audioStream;
                 return true;
