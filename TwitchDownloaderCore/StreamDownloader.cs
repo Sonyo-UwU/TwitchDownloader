@@ -17,6 +17,7 @@ namespace TwitchDownloaderCore
         private readonly HttpClient _httpClient;
         private readonly ITaskProgress _progress;
         private readonly string _cacheDir;
+        private bool _shouldClearCache = true;
 
         public StreamDownloader(StreamDownloadOptions downloadOptions, ITaskProgress progress = default)
         {
@@ -26,7 +27,9 @@ namespace TwitchDownloaderCore
             _cacheDir = Path.Combine(CacheDirectoryService.GetCacheDirectory(downloadOptions.TempFolder), $"{downloadOptions.ChannelLogin}_{DateTimeOffset.UtcNow.Ticks}");
         }
 
-        public async Task DownloadAsync(CancellationToken cancellationToken)
+        /// <param name="stoppingToken">A <see cref="CancellationToken"/> used to stop the stream download, but still finalize downloaded parts to the output file.</param>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to cancel the download.</param>
+        public async Task DownloadAsync(CancellationToken stoppingToken, CancellationToken cancellationToken)
         {
             //var outputFileInfo = TwitchHelper.ClaimFile(downloadOptions.Filename, downloadOptions.FileCollisionCallback, progress);
             //downloadOptions.Filename = outputFileInfo.FullName;
@@ -34,31 +37,8 @@ namespace TwitchDownloaderCore
             // Open the destination file so that it exists in the filesystem.
             //await using var outputFs = outputFileInfo.Open(FileMode.Create, FileAccess.Write, FileShare.Read);
 
-            try
-            {
-                await DownloadAsyncImpl(null, null, cancellationToken);
-            }
-            catch
-            {
-                await Task.Delay(100, CancellationToken.None);
-
-                //TwitchHelper.CleanUpClaimedFile(outputFileInfo, outputFs, progress);
-
-                throw;
-            }
-        }
-
-        public async Task DownloadAsyncImpl(FileInfo outputFileInfo, FileStream outputFs, CancellationToken cancellationToken)
-        {
+            // Create and delete cache folder here to avoid surrounding DownloadAsyncImpl with a try/finally
             await TwitchHelper.CleanupAbandonedVideoCaches(_cacheDir, _downloadOptions.CacheCleanerCallback, _progress);
-
-            _progress.SetStatus("Fetching Stream Info [1/4]");
-            IVideoQuality<StreamQuality> quality = await GetQuality();
-            cancellationToken.ThrowIfCancellationRequested();
-            //TODO: check available space and warn user if less than 24h
-
-            _progress.SetStatus("Downloading Stream [2/4]");
-
             if (Directory.Exists(_cacheDir))
             {
                 _progress.LogWarning("Download cache already exists!");
@@ -68,6 +48,57 @@ namespace TwitchDownloaderCore
                 TwitchHelper.CreateDirectory(_cacheDir);
             }
 
+            try
+            {
+                await DownloadAsyncImpl(null, null, stoppingToken, cancellationToken);
+            }
+            catch
+            {
+                await Task.Delay(100, CancellationToken.None);
+
+                //TwitchHelper.CleanUpClaimedFile(outputFileInfo, outputFs, progress);
+
+                throw;
+            }
+            finally
+            {
+                await Task.Delay(100, CancellationToken.None);
+
+                if (_shouldClearCache)
+                {
+                    Cleanup(_cacheDir);
+                }
+            }
+        }
+
+        public async Task DownloadAsyncImpl(FileInfo outputFileInfo, FileStream outputFs, CancellationToken stoppingToken, CancellationToken cancellationToken)
+        {
+            var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, cancellationToken);
+
+            _progress.SetStatus("Fetching Stream Info [1/4]");
+            IVideoQuality<StreamQuality> quality;
+            try
+            {
+                quality = await GetQuality(linkedCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                if (stoppingToken.IsCancellationRequested)
+                {
+                    _progress.LogWarning("No stream parts downloaded");
+                    return;
+                }
+                else
+                {
+                    throw;
+                }
+            }
+            //TODO: check available space and warn user if it is less than 24h
+            //TODO: display how long the stream has been live for
+
+
+            _progress.SetStatus("Downloading Stream [2/4]");
+
             var downloadState = new StreamDownloadState();
             var downloadThreads = new StreamDownloadThread[_downloadOptions.DownloadThreads];
             for (var i = 0; i < _downloadOptions.DownloadThreads; i++)
@@ -75,43 +106,66 @@ namespace TwitchDownloaderCore
                 downloadThreads[i] = new StreamDownloadThread(downloadState, _httpClient, _cacheDir, _downloadOptions.ThrottleKib, _progress, cancellationToken);
             }
 
-            DateTimeOffset nextProgrameDateTimeNeeded = DateTimeOffset.MaxValue;
-            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
-            do
+            try
             {
-                _progress.SetStatus(DateTime.Now.ToString());
-
-                var playlist = await GetPlaylistAsync(quality, cancellationToken);
-                cancellationToken.ThrowIfCancellationRequested();
-
-
-                var firstStream = playlist.Streams[0];
-                if (nextProgrameDateTimeNeeded - firstStream.ProgramDateTime < TimeSpan.Zero)
+                DateTimeOffset nextProgrameDateTimeNeeded = DateTimeOffset.MaxValue;
+                using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+                do
                 {
-                    _progress.LogWarning($"Missing stream part from {nextProgrameDateTimeNeeded} to {firstStream.ProgramDateTime}");
+                    //TODO: display better info (seconds downloaded, parts in queue still waiting to be downloaded by download threads...)
+                    _progress.SetStatus(DateTime.Now.ToString());
+
+                    var playlist = await GetPlaylistAsync(quality, linkedCts.Token);
+
+                    var firstStream = playlist.Streams[0];
+                    if (nextProgrameDateTimeNeeded - firstStream.ProgramDateTime < TimeSpan.Zero)
+                    {
+                        _progress.LogWarning($"Missing stream part from {nextProgrameDateTimeNeeded} to {firstStream.ProgramDateTime}");
+                    }
+
+                    downloadState.AppendSegment(playlist.Streams);
+
+                    var lastStream = playlist.Streams[^1];
+                    nextProgrameDateTimeNeeded = lastStream.ProgramDateTime + TimeSpan.FromSeconds((double)lastStream.PartInfo.Duration);
+                } while (await timer.WaitForNextTickAsync(linkedCts.Token));
+            }
+            catch (OperationCanceledException)
+            {
+                if (stoppingToken.IsCancellationRequested)
+                {
+                    _progress.LogInfo("Stopping stream download");
                 }
+                else
+                {
+                    throw;
+                }
+            }
 
-                downloadState.AppendSegment(playlist.Streams);
-
-                var lastStream = playlist.Streams[^1];
-                nextProgrameDateTimeNeeded = lastStream.ProgramDateTime + TimeSpan.FromSeconds((double)lastStream.PartInfo.Duration);
-            } while (await timer.WaitForNextTickAsync(cancellationToken));
+            // StoppingToken does nothing past this point
+            cancellationToken.ThrowIfCancellationRequested();
+            linkedCts.Dispose();
 
             downloadState.StopDownload();
 
-            //await RunFfmpegDownload(quality, cancellationToken);
+
+            _progress.SetTemplateStatus("Verifying Parts {0}% [3/4]", 0);
         }
 
-        private async Task<IVideoQuality<StreamQuality>> GetQuality()
+        private async Task<IVideoQuality<StreamQuality>> GetQuality(CancellationToken cancellationToken)
         {
-            GqlStreamTokenResponse accessToken = await TwitchHelper.GetStreamToken(_downloadOptions.ChannelLogin, _downloadOptions.Oauth);
+            GqlStreamTokenResponse accessToken = await TwitchHelper.GetStreamToken(_downloadOptions.ChannelLogin, _downloadOptions.Oauth, cancellationToken);
+            //TODO: get token expiration date
 
             if (accessToken.data.streamPlaybackAccessToken is null)
             {
                 throw new NullReferenceException("Invalid stream");
             }
 
-            var playlistString = await TwitchHelper.GetStreamPlaylist(_downloadOptions.ChannelLogin, accessToken.data.streamPlaybackAccessToken.value, accessToken.data.streamPlaybackAccessToken.signature);
+            var playlistString = await TwitchHelper.GetStreamPlaylist(
+                _downloadOptions.ChannelLogin,
+                accessToken.data.streamPlaybackAccessToken.value,
+                accessToken.data.streamPlaybackAccessToken.signature,
+                cancellationToken);
             if (playlistString.Contains("Can not find channel"))
             {
                 throw new Exception("Channel does not exist or is not live");
@@ -138,6 +192,21 @@ namespace TwitchDownloaderCore
             string playlistString = await _httpClient.GetStringAsync(quality.Path, cancellationToken);
             var playlist = M3U8.Parse(playlistString);
             return playlist;
+        }
+
+        private void Cleanup(string downloadFolder)
+        {
+            try
+            {
+                if (Directory.Exists(downloadFolder))
+                {
+                    Directory.Delete(downloadFolder, true);
+                }
+            }
+            catch (IOException e)
+            {
+                _progress.LogWarning($"Failed to delete download cache: {e.Message}");
+            }
         }
 
         private async Task<int> RunFfmpegDownload(IVideoQuality<StreamQuality> quality, CancellationToken cancellationToken)

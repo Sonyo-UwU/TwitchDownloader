@@ -20,7 +20,8 @@ namespace TwitchDownloaderCLI.Modes
             var downloadOptions = GetDownloadOptions(inputOptions, collisionHandler, progress);
 
             var streamDownloader = new StreamDownloader(downloadOptions, progress);
-            streamDownloader.DownloadAsync(new CancellationToken()).Wait();
+            //TODO: catch ^C signal and stop download.
+            streamDownloader.DownloadAsync(CancellationToken.None, CancellationToken.None).Wait();
         }
 
         private static StreamDownloadOptions GetDownloadOptions(StreamDownloadArgs inputOptions, FileCollisionHandler collisionHandler, ITaskLogger logger)

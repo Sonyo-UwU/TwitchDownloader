@@ -41,7 +41,7 @@ namespace TwitchDownloaderCore.Tools
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(_cancellationToken);
 
-            while (_downloadState.DownloadInProgress)
+            while (_downloadState.DownloadInProgress || !_downloadState.PartQueue.IsEmpty)
             {
                 _cancellationToken.ThrowIfCancellationRequested();
 
@@ -73,7 +73,7 @@ namespace TwitchDownloaderCore.Tools
         {
             var partState = _downloadState.PartStates[videoPartName];
             var partUri = new Uri(videoPartName);
-            var partFile = Path.Combine(_cacheFolder, partState.ProgramDateTime.ToString("yyyy-MM-ddTHH-mm-ss.fffffffzz") + ".ts");
+            var partFile = Path.Combine(_cacheFolder, partState.ProgramDateTime.ToString("yyyy-MM-ddTHH-mm-ss.fffffffzz") + Path.GetExtension(partUri.LocalPath));
             var partFi = new FileInfo(partFile);
 
             if (partFi.Exists)

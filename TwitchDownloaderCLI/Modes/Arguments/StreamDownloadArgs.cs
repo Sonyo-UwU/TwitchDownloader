@@ -22,7 +22,7 @@ namespace TwitchDownloaderCLI.Modes.Arguments
         [Option("bandwidth", Default = -1, HelpText = "The maximum bandwidth a thread will be allowed to use in kibibytes per second (KiB/s), or -1 for no maximum.")]
         public int ThrottleKib { get; set; }
 
-        [Option("oauth", HelpText = "OAuth access token to download subscriber only streams or access logged-in only qualities. DO NOT SHARE THIS WITH ANYONE.")]
+        [Option("oauth", HelpText = "OAuth access token to download subscriber only streams or access logged-in only video qualities. DO NOT SHARE THIS WITH ANYONE.")]
         public string Oauth { get; set; }
 
         [Option("ffmpeg-path", HelpText = "Path to FFmpeg executable.")]
