@@ -6,6 +6,7 @@ using TwitchDownloaderCore.Models;
 using TwitchDownloaderCore.Models.Interfaces;
 using TwitchDownloaderCore.Options;
 using TwitchDownloaderCore.Services;
+using TwitchDownloaderCore.Tools;
 using TwitchDownloaderCore.TwitchObjects.Gql;
 
 namespace TwitchDownloaderCore
@@ -13,15 +14,16 @@ namespace TwitchDownloaderCore
     public sealed partial class StreamDownloader
     {
         private readonly StreamDownloadOptions _downloadOptions;
+        private readonly HttpClient _httpClient;
         private readonly ITaskProgress _progress;
         private readonly string _cacheDir;
 
         public StreamDownloader(StreamDownloadOptions downloadOptions, ITaskProgress progress = default)
         {
             _downloadOptions = downloadOptions;
+            _httpClient = new() { Timeout = TimeSpan.FromSeconds(25) };
             _progress = progress;
             _cacheDir = Path.Combine(CacheDirectoryService.GetCacheDirectory(downloadOptions.TempFolder), $"{downloadOptions.ChannelLogin}_{DateTimeOffset.UtcNow.Ticks}");
-            Directory.CreateDirectory(_cacheDir);
         }
 
         public async Task DownloadAsync(CancellationToken cancellationToken)
@@ -48,12 +50,56 @@ namespace TwitchDownloaderCore
 
         public async Task DownloadAsyncImpl(FileInfo outputFileInfo, FileStream outputFs, CancellationToken cancellationToken)
         {
-            _progress.SetStatus("Fetching Stream Info [1/2]");
+            await TwitchHelper.CleanupAbandonedVideoCaches(_cacheDir, _downloadOptions.CacheCleanerCallback, _progress);
+
+            _progress.SetStatus("Fetching Stream Info [1/4]");
             IVideoQuality<StreamQuality> quality = await GetQuality();
+            cancellationToken.ThrowIfCancellationRequested();
+            //TODO: check available space and warn user if less than 24h
+
+            _progress.SetStatus("Downloading Stream [2/4]");
+
+            if (Directory.Exists(_cacheDir))
+            {
+                _progress.LogWarning("Download cache already exists!");
+            }
+            else
+            {
+                TwitchHelper.CreateDirectory(_cacheDir);
+            }
+
+            var downloadState = new StreamDownloadState();
+            var downloadThreads = new StreamDownloadThread[_downloadOptions.DownloadThreads];
+            for (var i = 0; i < _downloadOptions.DownloadThreads; i++)
+            {
+                downloadThreads[i] = new StreamDownloadThread(downloadState, _httpClient, _cacheDir, _downloadOptions.ThrottleKib, _progress, cancellationToken);
+            }
+
+            DateTimeOffset nextProgrameDateTimeNeeded = DateTimeOffset.MaxValue;
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+            do
+            {
+                _progress.SetStatus(DateTime.Now.ToString());
+
+                var playlist = await GetPlaylistAsync(quality, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
 
 
-            _progress.SetStatus("Downloading Stream [1/2]");
-            await RunFfmpegDownload(quality, cancellationToken);
+                var firstStream = playlist.Streams[0];
+                if (nextProgrameDateTimeNeeded - firstStream.ProgramDateTime < TimeSpan.Zero)
+                {
+                    _progress.LogWarning($"Missing stream part from {nextProgrameDateTimeNeeded} to {firstStream.ProgramDateTime}");
+                }
+
+                downloadState.AppendSegment(playlist.Streams);
+
+                var lastStream = playlist.Streams[^1];
+                nextProgrameDateTimeNeeded = lastStream.ProgramDateTime + TimeSpan.FromSeconds((double)lastStream.PartInfo.Duration);
+            } while (await timer.WaitForNextTickAsync(cancellationToken));
+
+            downloadState.StopDownload();
+
+            //await RunFfmpegDownload(quality, cancellationToken);
         }
 
         private async Task<IVideoQuality<StreamQuality>> GetQuality()
@@ -73,7 +119,7 @@ namespace TwitchDownloaderCore
 
             var m3u8 = M3U8.Parse(playlistString);
             var (availableQualities, unavailableQualities) = VideoQualities.FromStreamM3U8(m3u8);
-            var allQualities = new StreamVideoQualities(availableQualities.Qualities.Concat(unavailableQualities.Qualities).ToList());
+            var allQualities = new StreamVideoQualities([.. availableQualities.Qualities, .. unavailableQualities.Qualities]);
 
             var quality = allQualities.GetQuality(_downloadOptions.Quality);
             if (quality.Path is null)
@@ -84,6 +130,14 @@ namespace TwitchDownloaderCore
             }
 
             return quality;
+        }
+
+        private async Task<M3U8> GetPlaylistAsync(IVideoQuality<StreamQuality> quality, CancellationToken cancellationToken)
+        {
+            //TODO: catch when stream goes offline
+            string playlistString = await _httpClient.GetStringAsync(quality.Path, cancellationToken);
+            var playlist = M3U8.Parse(playlistString);
+            return playlist;
         }
 
         private async Task<int> RunFfmpegDownload(IVideoQuality<StreamQuality> quality, CancellationToken cancellationToken)
