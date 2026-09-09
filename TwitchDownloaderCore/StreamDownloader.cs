@@ -120,6 +120,8 @@ namespace TwitchDownloaderCore
                     _progress.SetStatus(DateTime.Now.ToString());
 
                     var playlist = await GetPlaylistAsync(quality, linkedCts.Token);
+                    if (playlist is null)
+                        break;
 
                     if (downloadState.HeaderFile is null && playlist.FileMetadata.Map?.Uri is not null)
                     {
@@ -158,6 +160,8 @@ namespace TwitchDownloaderCore
                     throw;
                 }
             }
+            // TODO: if end of stream, wait a minute or two before finalizing in case the stream crashed. If so resume the download
+
             cancellationToken.ThrowIfCancellationRequested();
             downloadState.StopDownload();
 
@@ -234,8 +238,23 @@ namespace TwitchDownloaderCore
 
         private async Task<M3U8> GetPlaylistAsync(IVideoQuality<StreamQuality> quality, CancellationToken cancellationToken)
         {
-            // TODO: catch when stream goes offline
-            string playlistString = await _httpClient.GetStringAsync(quality.Path, cancellationToken);
+            string playlistString;
+            try
+            {
+                playlistString = await _httpClient.GetStringAsync(quality.Path, cancellationToken);
+            }
+            catch (HttpRequestException e)
+            {
+                if (e.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    // Stream went offline
+                    return null;
+                }
+                else
+                {
+                    throw;
+                }
+            }
             var playlist = M3U8.Parse(playlistString);
             return playlist;
         }
