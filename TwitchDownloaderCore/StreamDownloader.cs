@@ -31,11 +31,11 @@ namespace TwitchDownloaderCore
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> used to cancel the download.</param>
         public async Task DownloadAsync(CancellationToken stoppingToken, CancellationToken cancellationToken)
         {
-            //var outputFileInfo = TwitchHelper.ClaimFile(downloadOptions.Filename, downloadOptions.FileCollisionCallback, progress);
-            //downloadOptions.Filename = outputFileInfo.FullName;
+            var outputFileInfo = TwitchHelper.ClaimFile(_downloadOptions.Filename, _downloadOptions.FileCollisionCallback, _progress);
+            _downloadOptions.Filename = outputFileInfo.FullName;
 
             // Open the destination file so that it exists in the filesystem.
-            //await using var outputFs = outputFileInfo.Open(FileMode.Create, FileAccess.Write, FileShare.Read);
+            await using var outputFs = outputFileInfo.Open(FileMode.Create, FileAccess.Write, FileShare.Read);
 
             // Create and delete cache folder here to avoid surrounding DownloadAsyncImpl with a try/finally
             await TwitchHelper.CleanupAbandonedVideoCaches(_cacheDir, _downloadOptions.CacheCleanerCallback, _progress);
@@ -50,13 +50,13 @@ namespace TwitchDownloaderCore
 
             try
             {
-                await DownloadAsyncImpl(null, null, stoppingToken, cancellationToken);
+                await DownloadAsyncImpl(outputFileInfo, outputFs, stoppingToken, cancellationToken);
             }
             catch
             {
                 await Task.Delay(100, CancellationToken.None);
 
-                //TwitchHelper.CleanUpClaimedFile(outputFileInfo, outputFs, progress);
+                TwitchHelper.CleanUpClaimedFile(outputFileInfo, outputFs, _progress);
 
                 throw;
             }
@@ -106,6 +106,10 @@ namespace TwitchDownloaderCore
                 downloadThreads[i] = new StreamDownloadThread(downloadState, _httpClient, _cacheDir, _downloadOptions.ThrottleKib, _progress, cancellationToken);
             }
 
+            var concatListPath = Path.Combine(_cacheDir, "concat.txt");
+            DateTimeOffset videoStart = default;
+            DateTimeOffset videoEnd = default;
+
             try
             {
                 DateTimeOffset nextProgrameDateTimeNeeded = DateTimeOffset.MaxValue;
@@ -123,14 +127,23 @@ namespace TwitchDownloaderCore
                     }
 
                     var firstStream = playlist.Streams[0];
+                    var lastStream = playlist.Streams[^1];
                     if (nextProgrameDateTimeNeeded - firstStream.ProgramDateTime < TimeSpan.Zero)
                     {
                         _progress.LogWarning($"Missing stream part from {nextProgrameDateTimeNeeded} to {firstStream.ProgramDateTime}");
                     }
 
+                    if (videoStart == default)
+                    {
+                        videoStart = firstStream.ProgramDateTime;
+                    }
+                    videoEnd = lastStream.ProgramDateTime + TimeSpan.FromSeconds((double)lastStream.PartInfo.Duration);
+
                     downloadState.AppendSegment(playlist.Streams);
 
-                    var lastStream = playlist.Streams[^1];
+                    await using var fs = new FileStream(concatListPath, FileMode.Append, FileAccess.Write, FileShare.Read);
+                    await FfmpegConcatList.SerializeAsync(fs, playlist.Streams.Select(x => (downloadState.PartStates[x.Path].FileName, x.PartInfo.Duration)), GetStreamIds(playlist), cancellationToken);
+
                     nextProgrameDateTimeNeeded = lastStream.ProgramDateTime + TimeSpan.FromSeconds((double)lastStream.PartInfo.Duration);
                 } while (await timer.WaitForNextTickAsync(linkedCts.Token));
             }
@@ -157,8 +170,31 @@ namespace TwitchDownloaderCore
 
 
             _progress.SetTemplateStatus("Finalizing Video {0}% [3/3]", 0);
-
             // TODO: try to get vod info if it exists (or fallback to channel info) to serialize metadata
+
+            outputFs.Close();
+
+            int ffmpegExitCode;
+            var ffmpegRetries = 0;
+            do
+            {
+                // For some reason using the full concatListPath makes ffmpeg not use _cacheDir as working directory
+                ffmpegExitCode = await RunFfmpegVideoCopy(outputFileInfo, "concat.txt", videoEnd - videoStart, ffmpegRetries > 0, cancellationToken);
+                if (ffmpegExitCode != 0)
+                {
+                    _progress.LogError($"Failed to finalize video (code {ffmpegExitCode}), retrying in 5 seconds...");
+                    await Task.Delay(5_000, cancellationToken);
+                }
+            } while (ffmpegExitCode != 0 && ffmpegRetries++ < 1);
+
+            outputFileInfo.Refresh();
+            if (ffmpegExitCode != 0 || !outputFileInfo.Exists || outputFileInfo.Length == 0)
+            {
+                _shouldClearCache = false;
+                throw new Exception($"Failed to finalize video. The download cache has not been cleared and can be found at {_cacheDir} along with a log file.");
+            }
+
+            _progress.ReportProgress(100);
         }
 
         private async Task<IVideoQuality<StreamQuality>> GetQuality(CancellationToken cancellationToken)
@@ -227,22 +263,23 @@ namespace TwitchDownloaderCore
             return destinationFile;
         }
 
-        private void Cleanup(string downloadFolder)
+        private FfmpegConcatList.StreamIds GetStreamIds(M3U8 playlist)
         {
-            try
+            var path = playlist.Streams.FirstOrDefault()?.Path ?? "";
+            var extension = DownloadTools.GetStreamPartFileExtension(path);
+            switch (extension)
             {
-                if (Directory.Exists(downloadFolder))
-                {
-                    Directory.Delete(downloadFolder, true);
-                }
-            }
-            catch (IOException e)
-            {
-                _progress.LogWarning($"Failed to delete download cache: {e.Message}");
+                case ".mp4":
+                    return FfmpegConcatList.StreamIds.Mp4;
+                case ".ts":
+                    return FfmpegConcatList.StreamIds.TransportStream;
+                default:
+                    _progress.LogWarning("No file extension was found! Assuming TS.");
+                    return FfmpegConcatList.StreamIds.TransportStream;
             }
         }
 
-        private async Task<int> RunFfmpegDownload(IVideoQuality<StreamQuality> quality, CancellationToken cancellationToken)
+        private async Task<int> RunFfmpegVideoCopy(FileInfo outputFile, string concatListPath, TimeSpan videoLength, bool disableAudioCopy, CancellationToken cancellationToken)
         {
             using var process = new Process
             {
@@ -251,9 +288,10 @@ namespace TwitchDownloaderCore
                     FileName = _downloadOptions.FfmpegPath,
                     UseShellExecute = false,
                     CreateNoWindow = true,
-                    RedirectStandardInput = true,
+                    RedirectStandardInput = false,
                     RedirectStandardOutput = true,
-                    RedirectStandardError = true
+                    RedirectStandardError = true,
+                    WorkingDirectory = _cacheDir
                 }
             };
 
@@ -261,11 +299,22 @@ namespace TwitchDownloaderCore
             {
                 "-stats",
                 "-y",
-                "-i", quality.Path,
-                "-c", "copy",
-                //"out.mp4"
-                _downloadOptions.Filename
+                "-avoid_negative_ts", "make_zero",
+                "-analyzeduration", $"{int.MaxValue}",
+                "-probesize", $"{int.MaxValue}",
+                "-f", "concat",
+                "-max_streams", $"{int.MaxValue}",
+                "-i", concatListPath,
+                disableAudioCopy ? "-c:v" : "-c", "copy",
+                outputFile.FullName
             };
+
+            if (disableAudioCopy)
+            {
+                // Some VODs have bad audio data which FFmpeg doesn't like in copy mode. See lay295#1121 for more info
+                // No idea if this is necessary with live streams
+                _progress.LogVerbose("Running with audio copy disabled.");
+            }
 
             foreach (var arg in args)
             {
@@ -281,33 +330,25 @@ namespace TwitchDownloaderCore
 
                 logQueue.Enqueue(e.Data); // We cannot use -report ffmpeg arg because it redirects stderr
 
-                HandleFfmpegOutput(e.Data);
+                HandleFfmpegOutput(e.Data, videoLength);
             };
+            cancellationToken.Register(process.Kill);
+            cancellationToken.ThrowIfCancellationRequested();
 
             _progress.LogVerbose($"Running \"{_downloadOptions.FfmpegPath}\" in \"{process.StartInfo.WorkingDirectory}\" with args: {CombineArguments(process.StartInfo.ArgumentList)}");
 
             process.Start();
             process.BeginErrorReadLine();
 
-            cancellationToken.Register(() =>
-            {
-                _progress.SetStatus("Stopping download...");
-                process.StandardInput.Write('q');
-            });
-
-            await using var logWriter = File.CreateText(Path.Combine(_cacheDir, "ffmpegLog.txt"));
+            await using var logWriter = File.AppendText(Path.Combine(_cacheDir, "ffmpegLog.txt"));
             logWriter.AutoFlush = true;
             do // We cannot handle logging inside the ErrorDataReceived lambda because more than 1 can come in at once and cause a race condition. lay295#598
             {
-                try
-                {
-                    await Task.Delay(200, cancellationToken);
-                }
-                catch { }
-
+                await Task.Delay(200, cancellationToken);
                 while (!logQueue.IsEmpty && logQueue.TryDequeue(out var logMessage))
                 {
                     await logWriter.WriteLineAsync(logMessage);
+                    cancellationToken.ThrowIfCancellationRequested();
                 }
             } while (!process.HasExited || !logQueue.IsEmpty);
 
@@ -325,10 +366,10 @@ namespace TwitchDownloaderCore
             }
         }
 
-
         [GeneratedRegex(@"(?<=time=)(\d\d):(\d\d):(\d\d)\.(\d\d)")]
         private static partial Regex EncodingTimeRegex { get; }
-        private void HandleFfmpegOutput(string output)
+
+        private void HandleFfmpegOutput(string output, TimeSpan videoLength)
         {
             var encodingTimeMatch = EncodingTimeRegex.Match(output);
             if (!encodingTimeMatch.Success)
@@ -345,7 +386,24 @@ namespace TwitchDownloaderCore
                 return;
             var encodingTime = new TimeSpan(0, hours, minutes, seconds, milliseconds);
 
-            _progress.SetStatus(encodingTime.ToString());
+            var percent = (int)Math.Round(encodingTime / videoLength * 100);
+
+            _progress.ReportProgress(Math.Clamp(percent, 0, 100));
+        }
+
+        private void Cleanup(string downloadFolder)
+        {
+            try
+            {
+                if (Directory.Exists(downloadFolder))
+                {
+                    Directory.Delete(downloadFolder, true);
+                }
+            }
+            catch (IOException e)
+            {
+                _progress.LogWarning($"Failed to delete download cache: {e.Message}");
+            }
         }
     }
 }
