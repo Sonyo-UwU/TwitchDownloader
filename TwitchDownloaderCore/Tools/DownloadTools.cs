@@ -105,5 +105,19 @@ namespace TwitchDownloaderCore.Tools
 
             return inputString[..queryIndex];
         }
+
+        /// <summary>
+        /// Extract the file extension from a stream part's path
+        /// </summary>
+        public static string GetStreamPartFileExtension(string path)
+        {
+            var queryIndex = path.IndexOf('?');
+            if (queryIndex == -1)
+            {
+                return path[path.LastIndexOf('.')..];
+            }
+
+            return path[path.LastIndexOf('.')..queryIndex];
+        }
     }
 }

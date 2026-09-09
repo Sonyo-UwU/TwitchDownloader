@@ -75,7 +75,7 @@ namespace TwitchDownloaderCore
         {
             var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, cancellationToken);
 
-            _progress.SetStatus("Fetching Stream Info [1/4]");
+            _progress.SetStatus("Fetching Stream Info [1/3]");
             IVideoQuality<StreamQuality> quality;
             try
             {
@@ -93,11 +93,11 @@ namespace TwitchDownloaderCore
                     throw;
                 }
             }
-            //TODO: check available space and warn user if it is less than 24h
-            //TODO: display how long the stream has been live for
+            // TODO: check available space and warn user if it is less than 24h
+            // TODO: display how long the stream has been live for
 
 
-            _progress.SetStatus("Downloading Stream [2/4]");
+            _progress.SetStatus("Downloading Stream [2/3]");
 
             var downloadState = new StreamDownloadState();
             var downloadThreads = new StreamDownloadThread[_downloadOptions.DownloadThreads];
@@ -112,10 +112,15 @@ namespace TwitchDownloaderCore
                 using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
                 do
                 {
-                    //TODO: display better info (seconds downloaded, parts in queue still waiting to be downloaded by download threads...)
+                    // TODO: display better info (seconds downloaded, parts in queue still waiting to be downloaded by download threads...)
                     _progress.SetStatus(DateTime.Now.ToString());
 
                     var playlist = await GetPlaylistAsync(quality, linkedCts.Token);
+
+                    if (downloadState.HeaderFile is null && playlist.FileMetadata.Map?.Uri is not null)
+                    {
+                        downloadState.HeaderFile = await GetHeaderFile(playlist, cancellationToken);
+                    }
 
                     var firstStream = playlist.Streams[0];
                     if (nextProgrameDateTimeNeeded - firstStream.ProgramDateTime < TimeSpan.Zero)
@@ -140,21 +145,26 @@ namespace TwitchDownloaderCore
                     throw;
                 }
             }
-
-            // StoppingToken does nothing past this point
             cancellationToken.ThrowIfCancellationRequested();
-            linkedCts.Dispose();
-
             downloadState.StopDownload();
 
+            // StoppingToken does nothing past this point
+            linkedCts.Dispose();
 
-            _progress.SetTemplateStatus("Verifying Parts {0}% [3/4]", 0);
+            // Download threads only throw when cancelled, we can just wait they all exit
+            await Task.WhenAll(downloadThreads.Select(x => x.ThreadTask));
+            cancellationToken.ThrowIfCancellationRequested();
+
+
+            _progress.SetTemplateStatus("Finalizing Video {0}% [3/3]", 0);
+
+            // TODO: try to get vod info if it exists (or fallback to channel info) to serialize metadata
         }
 
         private async Task<IVideoQuality<StreamQuality>> GetQuality(CancellationToken cancellationToken)
         {
             GqlStreamTokenResponse accessToken = await TwitchHelper.GetStreamToken(_downloadOptions.ChannelLogin, _downloadOptions.Oauth, cancellationToken);
-            //TODO: get token expiration date
+            // TODO: get token expiration date
 
             if (accessToken.data.streamPlaybackAccessToken is null)
             {
@@ -188,10 +198,33 @@ namespace TwitchDownloaderCore
 
         private async Task<M3U8> GetPlaylistAsync(IVideoQuality<StreamQuality> quality, CancellationToken cancellationToken)
         {
-            //TODO: catch when stream goes offline
+            // TODO: catch when stream goes offline
             string playlistString = await _httpClient.GetStringAsync(quality.Path, cancellationToken);
             var playlist = M3U8.Parse(playlistString);
             return playlist;
+        }
+
+        private async Task<string> GetHeaderFile(M3U8 playlist, CancellationToken cancellationToken)
+        {
+            var map = playlist.FileMetadata.Map;
+            if (string.IsNullOrWhiteSpace(map?.Uri))
+            {
+                return null;
+            }
+
+            if (map.ByteRange != default)
+            {
+                _progress.LogWarning($"Byte range was {map.ByteRange}, but is not yet implemented!");
+            }
+
+            var destinationFile = Path.Combine(_cacheDir, "header" + DownloadTools.GetStreamPartFileExtension(map.Uri));
+
+            var uri = new Uri(map.Uri);
+            _progress.LogVerbose($"Downloading header file from '{uri}' to '{destinationFile}'");
+
+            await DownloadTools.DownloadFileAsync(_httpClient, uri, destinationFile, null, _downloadOptions.ThrottleKib, _progress, CancellationTokenSource.CreateLinkedTokenSource(cancellationToken));
+
+            return destinationFile;
         }
 
         private void Cleanup(string downloadFolder)

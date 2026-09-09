@@ -59,11 +59,11 @@ namespace TwitchDownloaderCore.Tools
                     catch (Exception ex)
                     {
                         // Deliberately do not re-enqueue the part on exceptions
-                        _logger.LogVerbose($"Error while downloading {videoPart}: {ex.Message}");
-                        throw;
+                        _logger.LogWarning($"Error while downloading {videoPart}: {ex.Message}");
                     }
                 }
 
+				// TODO: use mutexes to avoid busy-waiting
                 Thread.Sleep(Random.Shared.Next(100, 200));
             }
         }
@@ -73,7 +73,7 @@ namespace TwitchDownloaderCore.Tools
         {
             var partState = _downloadState.PartStates[videoPartName];
             var partUri = new Uri(videoPartName);
-            var partFile = Path.Combine(_cacheFolder, partState.ProgramDateTime.ToString("yyyy-MM-ddTHH-mm-ss.fffffffzz") + Path.GetExtension(partUri.LocalPath));
+            var partFile = Path.Combine(_cacheFolder, partState.FileName);
             var partFi = new FileInfo(partFile);
 
             if (partFi.Exists)
@@ -93,7 +93,7 @@ namespace TwitchDownloaderCore.Tools
 
                 // Download file
                 // Stream parts don't have a Content-Length header, so this always returns -1
-                await DownloadTools.DownloadFileAsync(_client, partUri, partFile, null, _throttleKib, _logger, cancellationTokenSource);
+                await DownloadTools.DownloadFileAsync(_client, partUri, partFile, _downloadState.HeaderFile, _throttleKib, _logger, cancellationTokenSource);
 
                 // Check file size
                 partFi.Refresh();
