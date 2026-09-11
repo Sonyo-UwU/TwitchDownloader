@@ -95,9 +95,12 @@ namespace TwitchDownloaderCore
             }
             // TODO: check available space and warn user if it is less than 24h
             // TODO: display how long the stream has been live for
+            // TODO: option to download earlier parts from the VOD, either now or at end of stream download
 
 
-            _progress.SetStatus("Downloading Stream [2/3]");
+            // Hacky workaroud to display more than 23h
+            _progress.SetTemplateStatus("Downloading Stream ({0}h{1:m\\ms\\s} downloaded) [2/3]", 0, TimeSpan.Zero, TimeSpan.Zero);
+            var progressTemplateIncludesMissingTime = false;
 
             var downloadState = new StreamDownloadState();
             var downloadThreads = new StreamDownloadThread[_downloadOptions.DownloadThreads];
@@ -107,18 +110,13 @@ namespace TwitchDownloaderCore
             }
 
             var concatListPath = Path.Combine(_cacheDir, "concat.txt");
-            DateTimeOffset videoStart = default;
-            DateTimeOffset videoEnd = default;
+            FfmpegConcatList.StreamIds streamIds = null;
 
             try
             {
-                DateTimeOffset nextProgrameDateTimeNeeded = DateTimeOffset.MaxValue;
                 using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
                 do
                 {
-                    // TODO: display better info (seconds downloaded, parts in queue still waiting to be downloaded by download threads...)
-                    _progress.SetStatus(DateTime.Now.ToString());
-
                     var playlist = await GetPlaylistAsync(quality, linkedCts.Token);
                     if (playlist is null)
                         break;
@@ -127,26 +125,22 @@ namespace TwitchDownloaderCore
                     {
                         downloadState.HeaderFile = await GetHeaderFile(playlist, cancellationToken);
                     }
+                    streamIds ??= GetStreamIds(playlist);
 
-                    var firstStream = playlist.Streams[0];
-                    var lastStream = playlist.Streams[^1];
-                    if (nextProgrameDateTimeNeeded - firstStream.ProgramDateTime < TimeSpan.Zero)
+                    if (!progressTemplateIncludesMissingTime && downloadState.TotalMissingTime > TimeSpan.Zero)
                     {
-                        _progress.LogWarning($"Missing stream part from {nextProgrameDateTimeNeeded} to {firstStream.ProgramDateTime}");
+                        _progress.SetTemplateStatus(
+                            "Downloading Stream ({0}h{1:m\\ms\\s} downloaded, {2:h\\hm\\ms\\s} missing) [2/3]",
+                            (int)downloadState.TotalDownloadedTime.TotalHours,
+                            downloadState.TotalDownloadedTime,
+                            downloadState.TotalMissingTime);
+                        progressTemplateIncludesMissingTime = true;
                     }
 
-                    if (videoStart == default)
-                    {
-                        videoStart = firstStream.ProgramDateTime;
-                    }
-                    videoEnd = lastStream.ProgramDateTime + TimeSpan.FromSeconds((double)lastStream.PartInfo.Duration);
-
-                    downloadState.AppendSegment(playlist.Streams);
+                    var completedParts = downloadState.AppendSegment(playlist);
 
                     await using var fs = new FileStream(concatListPath, FileMode.Append, FileAccess.Write, FileShare.Read);
-                    await FfmpegConcatList.SerializeAsync(fs, playlist.Streams.Select(x => (downloadState.PartStates[x.Path].FileName, x.PartInfo.Duration)), GetStreamIds(playlist), cancellationToken);
-
-                    nextProgrameDateTimeNeeded = lastStream.ProgramDateTime + TimeSpan.FromSeconds((double)lastStream.PartInfo.Duration);
+                    await FfmpegConcatList.SerializeAsync(fs, completedParts.Select(x => (x.FileName, (decimal)x.Duration.TotalSeconds)), streamIds, cancellationToken);
                 } while (await timer.WaitForNextTickAsync(linkedCts.Token));
             }
             catch (OperationCanceledException)
@@ -160,7 +154,12 @@ namespace TwitchDownloaderCore
                     throw;
                 }
             }
-            // TODO: if end of stream, wait a minute or two before finalizing in case the stream crashed. If so resume the download
+
+            if (!linkedCts.IsCancellationRequested)
+            {
+                // TODO: wait a minute or two before finalizing in case the stream crashed. If channel goes back live, resume the download
+                _progress.LogInfo("End of live stream");
+            }
 
             cancellationToken.ThrowIfCancellationRequested();
             downloadState.StopDownload();
@@ -171,6 +170,12 @@ namespace TwitchDownloaderCore
             // Download threads only throw when cancelled, we can just wait they all exit
             await Task.WhenAll(downloadThreads.Select(x => x.ThreadTask));
             cancellationToken.ThrowIfCancellationRequested();
+
+            var lastParts = downloadState.GetLastParts();
+            await using var concatFs = new FileStream(concatListPath, FileMode.Append, FileAccess.Write, FileShare.Read);
+            await FfmpegConcatList.SerializeAsync(concatFs, lastParts.Select(x => (x.FileName, (decimal)x.Duration.TotalSeconds)), streamIds, cancellationToken);
+
+            // TODO: option to download missing parts from VOD
 
 
             _progress.SetTemplateStatus("Finalizing Video {0}% [3/3]", 0);
@@ -183,7 +188,7 @@ namespace TwitchDownloaderCore
             do
             {
                 // For some reason using the full concatListPath makes ffmpeg not use _cacheDir as working directory
-                ffmpegExitCode = await RunFfmpegVideoCopy(outputFileInfo, "concat.txt", videoEnd - videoStart, ffmpegRetries > 0, cancellationToken);
+                ffmpegExitCode = await RunFfmpegVideoCopy(outputFileInfo, "concat.txt", downloadState.TotalDownloadedTime + downloadState.TotalMissingTime, ffmpegRetries > 0, cancellationToken);
                 if (ffmpegExitCode != 0)
                 {
                     _progress.LogError($"Failed to finalize video (code {ffmpegExitCode}), retrying in 5 seconds...");

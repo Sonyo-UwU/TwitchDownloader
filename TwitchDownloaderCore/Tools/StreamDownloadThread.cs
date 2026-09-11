@@ -8,17 +8,17 @@ namespace TwitchDownloaderCore.Tools
         private readonly HttpClient _client;
         private readonly string _cacheFolder;
         private readonly int _throttleKib;
-        private readonly ITaskLogger _logger;
+        private readonly ITaskProgress _progress;
         private readonly CancellationToken _cancellationToken;
         public Task ThreadTask { get; private set; }
 
-        public StreamDownloadThread(StreamDownloadState downloadState, HttpClient httpClient, string cacheFolder, int throttleKib, ITaskLogger logger, CancellationToken cancellationToken)
+        public StreamDownloadThread(StreamDownloadState downloadState, HttpClient httpClient, string cacheFolder, int throttleKib, ITaskProgress progress, CancellationToken cancellationToken)
         {
             _downloadState = downloadState;
             _client = httpClient;
             _cacheFolder = cacheFolder;
             _throttleKib = throttleKib;
-            _logger = logger;
+            _progress = progress;
             _cancellationToken = cancellationToken;
             StartDownload();
         }
@@ -55,30 +55,42 @@ namespace TwitchDownloaderCore.Tools
                             Thread.Sleep(Random.Shared.Next(100, 1_000));
                             _downloadState.PartQueue.Enqueue(videoPart);
                         }
+                        else
+                        {
+                            videoPart.IsDownloaded = true;
+                            _downloadState.ProcessedParts[videoPart.ProgramDateTime] = videoPart;
+                            _downloadState.TotalDownloadedTime += videoPart.Duration;
+                            _progress.ReportProgress((int)_downloadState.TotalDownloadedTime.TotalHours, _downloadState.TotalDownloadedTime, _downloadState.TotalMissingTime);
+                        }
                     }
                     catch (Exception ex)
                     {
                         // Deliberately do not re-enqueue the part on exceptions
-                        _logger.LogWarning($"Error while downloading {videoPart}: {ex.Message}");
+                        _progress.LogWarning($"Part {videoPart.FileName} could not be downloaded and will be missing from the finalized video.");
+                        _progress.LogVerbose($"Error while downloading {videoPart.FileName}: {ex.Message}");
+
+                        videoPart.IsDownloaded = false;
+                        _downloadState.ProcessedParts[videoPart.ProgramDateTime] = videoPart;
+                        _downloadState.TotalMissingTime += videoPart.Duration;
+                        _progress.ReportProgress((int)_downloadState.TotalDownloadedTime.TotalHours, _downloadState.TotalDownloadedTime, _downloadState.TotalMissingTime);
                     }
                 }
 
-				// TODO: use mutexes to avoid busy-waiting
+                // TODO: use mutexes to avoid busy-waiting
                 Thread.Sleep(Random.Shared.Next(100, 200));
             }
         }
 
         /// <remarks>The <paramref name="cancellationTokenSource"/> may be canceled by this method.</remarks>
-        private async Task<bool> DownloadStreamPartAsync(string videoPartName, CancellationTokenSource cancellationTokenSource)
+        private async Task<bool> DownloadStreamPartAsync(StreamDownloadState.PartState videoPart, CancellationTokenSource cancellationTokenSource)
         {
-            var partState = _downloadState.PartStates[videoPartName];
-            var partUri = new Uri(videoPartName);
-            var partFile = Path.Combine(_cacheFolder, partState.FileName);
+            var partUri = new Uri(videoPart.Path);
+            var partFile = Path.Combine(_cacheFolder, videoPart.FileName);
             var partFi = new FileInfo(partFile);
 
             if (partFi.Exists)
             {
-                _logger.LogWarning($"Tried to redownload already downloaded part: {videoPartName}.");
+                _progress.LogWarning($"Tried to redownload already downloaded part: {videoPart.FileName}.");
                 return true;
             }
 
@@ -86,14 +98,14 @@ namespace TwitchDownloaderCore.Tools
             {
                 // Check download attempts
                 const int MAX_DOWNLOAD_ATTEMPTS = 5;
-                if (partState.DownloadAttempts++ >= MAX_DOWNLOAD_ATTEMPTS)
+                if (videoPart.DownloadAttempts++ >= MAX_DOWNLOAD_ATTEMPTS)
                 {
-                    throw new Exception($"{videoPartName} failed to download after {partState.DownloadAttempts - 1} attempts.");
+                    throw new Exception($"{videoPart.FileName} failed to download after {videoPart.DownloadAttempts - 1} attempts.");
                 }
 
                 // Download file
                 // Stream parts don't have a Content-Length header, so this always returns -1
-                await DownloadTools.DownloadFileAsync(_client, partUri, partFile, _downloadState.HeaderFile, _throttleKib, _logger, cancellationTokenSource);
+                await DownloadTools.DownloadFileAsync(_client, partUri, partFile, _downloadState.HeaderFile, _throttleKib, _progress, cancellationTokenSource);
 
                 // Check file size
                 partFi.Refresh();
@@ -101,16 +113,16 @@ namespace TwitchDownloaderCore.Tools
             }
             catch (HttpRequestException ex)
             {
-                _logger.LogVerbose(ex.StatusCode.HasValue
-                    ? $"Received {(int)ex.StatusCode}: {ex.StatusCode} for {videoPartName}."
-                    : $"{videoPartName}: {ex.Message}");
+                _progress.LogVerbose(ex.StatusCode.HasValue
+                    ? $"Received {(int)ex.StatusCode}: {ex.StatusCode} for {videoPart.FileName}."
+                    : $"{videoPart.FileName}: {ex.Message}");
 
                 await Delay(1_000, cancellationTokenSource.Token);
                 return false;
             }
             catch (TaskCanceledException ex) when (ex.Message.Contains("HttpClient.Timeout"))
             {
-                _logger.LogVerbose($"{videoPartName} timed out.");
+                _progress.LogVerbose($"{videoPart.FileName} timed out.");
 
                 await Delay(5_000, cancellationTokenSource.Token);
                 return false;
@@ -129,7 +141,7 @@ namespace TwitchDownloaderCore.Tools
             const int TS_PACKET_LENGTH = 188; // MPEG TS packets are made of a header and a body: [ 4B ][   184B   ] - https://tsduck.io/download/docs/mpegts-introduction.pdf
             if (length % TS_PACKET_LENGTH != 0)
             {
-                _logger.LogWarning($"{Path.GetFileName(partFile)} contains malformed packets and may cause encoding issues.");
+                _progress.LogWarning($"{Path.GetFileName(partFile)} contains malformed packets and may cause encoding issues.");
             }
         }
 
