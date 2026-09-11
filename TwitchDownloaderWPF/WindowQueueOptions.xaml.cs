@@ -257,8 +257,8 @@ namespace TwitchDownloaderWPF
                 }
             }
 
-            this.DialogResult = true;
-            this.Close();
+            DialogResult = true;
+            Close();
         }
 
         private void EnqueueDownloadTask(TaskData taskData, string folderPath)
@@ -296,23 +296,21 @@ namespace TwitchDownloaderWPF
 
         private void EnqueueVodDownload(TaskData taskData, string folderPath)
         {
-            VideoDownloadOptions downloadOptions = new VideoDownloadOptions
+            var downloadOptions = new VideoDownloadOptions
             {
-                Oauth = Settings.Default.OAuth,
-                TempFolder = Settings.Default.TempPath,
-                Id = long.Parse(taskData.Id),
-                Quality = (ComboPreferredQuality.SelectedItem as ComboBoxItem)?.Content as string,
-                FfmpegPath = "ffmpeg",
-                TrimBeginning = TrimsOverride ? CheckTrimStart.IsChecked.GetValueOrDefault() : taskData.TrimStart,
-                TrimBeginningTime = TrimsOverride ? GetTrimStart() : taskData.TrimStartTime,
-                TrimEnding = TrimsOverride ? CheckTrimEnd.IsChecked.GetValueOrDefault() : taskData.TrimEnd,
-                TrimEndingTime = TrimsOverride ? GetTrimEnd(taskData.Length) : taskData.TrimEndTime,
-                DownloadThreads = Settings.Default.VodDownloadThreads,
-                ThrottleKib = Settings.Default.DownloadThrottleEnabled
-                                ? Settings.Default.MaximumBandwidthKib
-                                : -1,
+                Oauth                 = Settings.Default.OAuth,
+                TempFolder            = Settings.Default.TempPath,
+                Id                    = long.Parse(taskData.Id),
+                Quality               = (ComboPreferredQuality.SelectedItem as ComboBoxItem)?.Content as string,
+                FfmpegPath            = "ffmpeg",
+                TrimBeginning         = TrimsOverride ? CheckTrimStart.IsChecked.GetValueOrDefault() : taskData.TrimStart,
+                TrimBeginningTime     = TrimsOverride ? GetTrimStart() : taskData.TrimStartTime,
+                TrimEnding            = TrimsOverride ? CheckTrimEnd.IsChecked.GetValueOrDefault() : taskData.TrimEnd,
+                TrimEndingTime        = TrimsOverride ? GetTrimEnd(taskData.Length) : taskData.TrimEndTime,
+                DownloadThreads       = Settings.Default.VodDownloadThreads,
+                ThrottleKib           = Settings.Default.DownloadThrottleEnabled ? Settings.Default.MaximumBandwidthKib : -1,
                 FileCollisionCallback = HandleFileCollisionCallback,
-                DelayDownload = checkDelayVideo.IsChecked.GetValueOrDefault()
+                DelayDownload         = checkDelayVideo.IsChecked.GetValueOrDefault()
             };
             downloadOptions.Filename = Path.Combine(folderPath,
                 FilenameService.GetFilename(
@@ -329,7 +327,7 @@ namespace TwitchDownloaderWPF
                     taskData.Game) +
                 FilenameService.GuessVodFileExtension(downloadOptions.Quality));
 
-            VodDownloadTask downloadTask = new VodDownloadTask
+            var downloadTask = new VodDownloadTask
             {
                 DownloadOptions = downloadOptions,
                 Info =
@@ -347,36 +345,34 @@ namespace TwitchDownloaderWPF
 
         private void EnqueueClipDownload(TaskData taskData, string folderPath)
         {
-            ClipDownloadOptions downloadOptions = new ClipDownloadOptions
+            var downloadOptions = new ClipDownloadOptions
             {
-                Id = taskData.Id,
-                Quality = (ComboPreferredQuality.SelectedItem as ComboBoxItem)?.Content as string,
-                Filename = Path.Combine(folderPath,
-                    FilenameService.GetFilename(
-                        Settings.Default.TemplateClip,
-                        taskData.Title,
-                        taskData.Id,
-                        taskData.Time,
-                        taskData.StreamerName,
-                        taskData.StreamerId,
-                        TimeSpan.Zero,
-                        taskData.Length,
-                        taskData.Length,
-                        taskData.Views,
-                        taskData.Game,
-                        taskData.ClipperName,
-                        taskData.ClipperId) +
-                    ".mp4"),
-                ThrottleKib = Settings.Default.DownloadThrottleEnabled
-                                ? Settings.Default.MaximumBandwidthKib
-                                : -1,
-                TempFolder = Settings.Default.TempPath,
-                EncodeMetadata = Settings.Default.EncodeClipMetadata,
-                FfmpegPath = "ffmpeg",
+                Id                    = taskData.Id,
+                Quality               = (ComboPreferredQuality.SelectedItem as ComboBoxItem)?.Content as string,
+                Filename              = Path.Combine(folderPath,
+                                            FilenameService.GetFilename(
+                                                Settings.Default.TemplateClip,
+                                                taskData.Title,
+                                                taskData.Id,
+                                                taskData.Time,
+                                                taskData.StreamerName,
+                                                taskData.StreamerId,
+                                                TimeSpan.Zero,
+                                                taskData.Length,
+                                                taskData.Length,
+                                                taskData.Views,
+                                                taskData.Game,
+                                                taskData.ClipperName,
+                                                taskData.ClipperId) +
+                                            ".mp4"),
+                ThrottleKib           = Settings.Default.DownloadThrottleEnabled ? Settings.Default.MaximumBandwidthKib : -1,
+                TempFolder            = Settings.Default.TempPath,
+                EncodeMetadata        = Settings.Default.EncodeClipMetadata,
+                FfmpegPath            = "ffmpeg",
                 FileCollisionCallback = HandleFileCollisionCallback,
             };
 
-            ClipDownloadTask downloadTask = new ClipDownloadTask
+            var downloadTask = new ClipDownloadTask
             {
                 DownloadOptions = downloadOptions,
                 Info =
@@ -394,21 +390,21 @@ namespace TwitchDownloaderWPF
 
         private void EnqueueChatDownload(TaskData taskData, string folderPath)
         {
-            ChatDownloadOptions downloadOptions = new ChatDownloadOptions
+            var downloadOptions = new ChatDownloadOptions
             {
-                EmbedData = checkEmbed.IsChecked.GetValueOrDefault(),
-                BttvEmotes = CheckBttvEmbed.IsChecked.GetValueOrDefault(),
-                FfzEmotes = CheckFfzEmbed.IsChecked.GetValueOrDefault(),
-                StvEmotes = CheckStvEmbed.IsChecked.GetValueOrDefault(),
-                TimeFormat = TimestampFormat.Relative,
-                Id = taskData.Id,
-                TrimBeginning = TrimsOverride ? CheckTrimStart.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit) : taskData.TrimStart, // Clips can't be trimmed
-                TrimBeginningTime = TrimsOverride ? GetTrimStart().TotalSeconds : taskData.TrimStartTime.TotalSeconds,
-                TrimEnding = TrimsOverride ? CheckTrimEnd.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit) : taskData.TrimEnd,
-                TrimEndingTime = TrimsOverride ? GetTrimEnd(taskData.Length).TotalSeconds : taskData.TrimEndTime.TotalSeconds,
+                EmbedData             = checkEmbed.IsChecked.GetValueOrDefault(),
+                BttvEmotes            = CheckBttvEmbed.IsChecked.GetValueOrDefault(),
+                FfzEmotes             = CheckFfzEmbed.IsChecked.GetValueOrDefault(),
+                StvEmotes             = CheckStvEmbed.IsChecked.GetValueOrDefault(),
+                TimeFormat            = TimestampFormat.Relative,
+                Id                    = taskData.Id,
+                TrimBeginning         = TrimsOverride ? CheckTrimStart.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit) : taskData.TrimStart, // Clips can't be trimmed
+                TrimBeginningTime     = TrimsOverride ? GetTrimStart().TotalSeconds : taskData.TrimStartTime.TotalSeconds,
+                TrimEnding            = TrimsOverride ? CheckTrimEnd.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit) : taskData.TrimEnd,
+                TrimEndingTime        = TrimsOverride ? GetTrimEnd(taskData.Length).TotalSeconds : taskData.TrimEndTime.TotalSeconds,
                 FileCollisionCallback = HandleFileCollisionCallback,
-                DelayDownload = checkDelayChat.IsChecked.GetValueOrDefault(),
-                DownloadThreads = Settings.Default.ChatDownloadThreads
+                DelayDownload         = checkDelayChat.IsChecked.GetValueOrDefault(),
+                DownloadThreads       = Settings.Default.ChatDownloadThreads
             };
             if (radioJson.IsChecked == true)
                 downloadOptions.DownloadFormat = ChatFormat.Json;
@@ -436,7 +432,7 @@ namespace TwitchDownloaderWPF
                     taskData.ClipperId) +
                 downloadOptions.FileExtension);
 
-            ChatDownloadTask downloadTask = new ChatDownloadTask
+            var downloadTask = new ChatDownloadTask
             {
                 DownloadOptions = downloadOptions,
                 Info =
@@ -459,19 +455,19 @@ namespace TwitchDownloaderWPF
 
         private void EnqueueChatUpdate(TaskData taskData, string folderPath)
         {
-            ChatUpdateOptions updateOptions = new ChatUpdateOptions
+            var updateOptions = new ChatUpdateOptions
             {
-                EmbedMissing = checkEmbed.IsChecked.GetValueOrDefault(),
-                ReplaceEmbeds = CheckReplaceEmbeds.IsChecked.GetValueOrDefault(),
-                BttvEmotes = CheckBttvEmbed.IsChecked.GetValueOrDefault(),
-                FfzEmotes = CheckFfzEmbed.IsChecked.GetValueOrDefault(),
-                StvEmotes = CheckStvEmbed.IsChecked.GetValueOrDefault(),
-                TextTimestampFormat = TimestampFormat.Relative,
-                InputFile = taskData.FilePath,
-                TrimBeginning = TrimsOverride ? CheckTrimStart.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit) : taskData.TrimStart, // Clips can't be trimmed
-                TrimBeginningTime = TrimsOverride ? GetTrimStart().TotalSeconds : taskData.TrimStartTime.TotalSeconds,
-                TrimEnding = TrimsOverride ? CheckTrimEnd.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit) : taskData.TrimEnd,
-                TrimEndingTime = TrimsOverride ? GetTrimEnd(taskData.Length).TotalSeconds : taskData.TrimEndTime.TotalSeconds,
+                EmbedMissing          = checkEmbed.IsChecked.GetValueOrDefault(),
+                ReplaceEmbeds         = CheckReplaceEmbeds.IsChecked.GetValueOrDefault(),
+                BttvEmotes            = CheckBttvEmbed.IsChecked.GetValueOrDefault(),
+                FfzEmotes             = CheckFfzEmbed.IsChecked.GetValueOrDefault(),
+                StvEmotes             = CheckStvEmbed.IsChecked.GetValueOrDefault(),
+                TextTimestampFormat   = TimestampFormat.Relative,
+                InputFile             = taskData.FilePath,
+                TrimBeginning         = TrimsOverride ? CheckTrimStart.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit) : taskData.TrimStart, // Clips can't be trimmed
+                TrimBeginningTime     = TrimsOverride ? GetTrimStart().TotalSeconds : taskData.TrimStartTime.TotalSeconds,
+                TrimEnding            = TrimsOverride ? CheckTrimEnd.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit) : taskData.TrimEnd,
+                TrimEndingTime        = TrimsOverride ? GetTrimEnd(taskData.Length).TotalSeconds : taskData.TrimEndTime.TotalSeconds,
                 FileCollisionCallback = HandleFileCollisionCallback
             };
             if (radioJson.IsChecked == true)
@@ -500,7 +496,7 @@ namespace TwitchDownloaderWPF
                     taskData.ClipperId) +
                 updateOptions.FileExtension);
 
-            ChatUpdateTask updateTask = new ChatUpdateTask
+            var updateTask = new ChatUpdateTask
             {
                 UpdateOptions = updateOptions,
                 Info =
@@ -555,7 +551,7 @@ namespace TwitchDownloaderWPF
                 renderOptions.EndOverride = (int)Math.Ceiling(trimEndTime.TotalSeconds);
             }
 
-            ChatRenderTask renderTask = new ChatRenderTask
+            var renderTask = new ChatRenderTask
             {
                 DownloadOptions = renderOptions,
                 Info =
