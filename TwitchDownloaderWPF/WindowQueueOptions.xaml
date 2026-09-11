@@ -81,7 +81,10 @@
                 <hc:NumericUpDown Margin="3,0,0,0" Minimum="0" Maximum="59" Value="0" x:Name="NumTrimStartMinute" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}" />
                 <hc:NumericUpDown Margin="3,0,0,0" Minimum="0" Maximum="59" Value="0" x:Name="NumTrimStartSecond" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}" />
             </StackPanel>
-            <CheckBox x:Name="CheckTrimEnd" Content="{lex:Loc TrimEndFull}" Checked="UpdateEnabledEvent" Unchecked="UpdateEnabledEvent" HorizontalAlignment="Left" Margin="0,8,0,0" VerticalAlignment="Top" BorderBrush="{DynamicResource AppElementBorder}"/>
+            <StackPanel Orientation="Horizontal">
+                <CheckBox x:Name="CheckTrimEnd" Content="{lex:Loc TrimEndFull}" Checked="UpdateEnabledEvent" Unchecked="UpdateEnabledEvent" HorizontalAlignment="Left" Margin="0,8,0,0" VerticalAlignment="Top" BorderBrush="{DynamicResource AppElementBorder}"/>
+                <CheckBox x:Name="CheckTrimEndRelative" Content="{lex:Loc Relative}" Checked="CheckTrimEndRelative_CheckChanged" Unchecked="CheckTrimEndRelative_CheckChanged" HorizontalAlignment="Left" Margin="8,8,0,0" VerticalAlignment="Top" BorderBrush="{DynamicResource AppElementBorder}"/>
+            </StackPanel>
             <StackPanel x:Name="TrimEndSettings" Orientation="Horizontal" IsEnabled="False" Margin="22,5,0,0">
                 <hc:NumericUpDown Margin="0,0,0,0" Minimum="0" Maximum="48" Value="0" x:Name="NumTrimEndHour" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}" />
                 <hc:NumericUpDown Margin="3,0,0,0" Minimum="0" Maximum="59" Value="0" x:Name="NumTrimEndMinute" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}" />

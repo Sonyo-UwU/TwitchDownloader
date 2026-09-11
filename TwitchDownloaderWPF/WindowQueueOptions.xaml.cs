@@ -24,7 +24,8 @@ namespace TwitchDownloaderWPF
         private readonly IList<TaskData> _dataList;
 
         private bool CheckRenderWasChecked = false;
-        private bool ForceRender = false;
+        private readonly bool ForceRender = false;
+        private readonly bool TrimsOverride = false;
 
         public WindowQueueOptions(IList<TaskData> dataList,
             bool forceVideoDownload = false,
@@ -64,6 +65,7 @@ namespace TwitchDownloaderWPF
                         CheckTrimStart.Visibility = Visibility.Collapsed;
                         TrimStartSettings.Visibility = Visibility.Collapsed;
                         CheckTrimEnd.Visibility = Visibility.Collapsed;
+                        CheckTrimEndRelative.Visibility = Visibility.Collapsed;
                         TrimEndSettings.Visibility = Visibility.Collapsed;
                     }
                 }
@@ -163,40 +165,45 @@ namespace TwitchDownloaderWPF
             CheckStvEmbed.IsChecked = Settings.Default.STVEmotes;
 
 
-            // Set trims from first task
+            bool notRelativeCompatible = _dataList.Select(x => (x.TrimStart, x.TrimStartTime, x.TrimEnd, x.TrimEndTime)).Distinct().Count() == 1;
+            bool relativeCompatible = _dataList.Select(x => (x.TrimStart, x.TrimStartTime, x.TrimEnd, x.RelativeTrimEndTime)).Distinct().Count() == 1;
+
             var firstTask = _dataList[0];
             NumTrimStartHour.Value = (int)firstTask.TrimStartTime.TotalHours;
             NumTrimStartMinute.Value = firstTask.TrimStartTime.Minutes;
             NumTrimStartSecond.Value = firstTask.TrimStartTime.Seconds;
             CheckTrimStart.IsChecked = firstTask.TrimStart;
-            NumTrimEndHour.Value = (int)firstTask.RelativeTrimEndTime.TotalHours;
-            NumTrimEndMinute.Value = firstTask.RelativeTrimEndTime.Minutes;
-            NumTrimEndSecond.Value = firstTask.RelativeTrimEndTime.Seconds;
-            CheckTrimEnd.IsChecked = firstTask.TrimEnd;
-
-            // Check if any other task has other trim options
-            for (int i = 1; i < _dataList.Count; i++)
+            if (notRelativeCompatible)
             {
-                TaskData task = _dataList[i];
-
-                if (NumTrimStartHour.Value   != (int)task.TrimStartTime.TotalHours ||
-                    NumTrimStartMinute.Value !=      task.TrimStartTime.Minutes    ||
-                    NumTrimStartSecond.Value !=      task.TrimStartTime.Seconds    ||
-                    CheckTrimStart.IsChecked.GetValueOrDefault() != task.TrimStart ||
-                    
-                    NumTrimEndHour.Value   != (int)task.RelativeTrimEndTime.TotalHours ||
-                    NumTrimEndMinute.Value !=      task.RelativeTrimEndTime.Minutes    ||
-                    NumTrimEndSecond.Value !=      task.RelativeTrimEndTime.Seconds    ||
-                    CheckTrimEnd.IsChecked.GetValueOrDefault() != task.TrimEnd)
-                {
-                    // Incompatible, disable trim options
-                    CheckTrimStart.Visibility = Visibility.Collapsed;
-                    TrimStartSettings.Visibility = Visibility.Collapsed;
-                    CheckTrimEnd.Visibility = Visibility.Collapsed;
-                    TrimEndSettings.Visibility = Visibility.Collapsed;
-                    break;
-                }
+                TrimsOverride = true;
+                CheckTrimEndRelative.IsChecked = false;
+                NumTrimEndHour.Value = (int)firstTask.TrimEndTime.TotalHours;
+                NumTrimEndMinute.Value = firstTask.TrimEndTime.Minutes;
+                NumTrimEndSecond.Value = firstTask.TrimEndTime.Seconds;
+                CheckTrimEnd.IsChecked = firstTask.TrimEnd;
             }
+            else if (relativeCompatible)
+            {
+                TrimsOverride = true;
+                CheckTrimEndRelative.IsChecked = true;
+                NumTrimEndHour.Value = (int)firstTask.RelativeTrimEndTime.TotalHours;
+                NumTrimEndMinute.Value = firstTask.RelativeTrimEndTime.Minutes;
+                NumTrimEndSecond.Value = firstTask.RelativeTrimEndTime.Seconds;
+                CheckTrimEnd.IsChecked = firstTask.TrimEnd;
+            }
+            else
+            {
+                // Incompatible, disable trim options
+                TrimsOverride = false;
+                CheckTrimStart.Visibility = Visibility.Collapsed;
+                TrimStartSettings.Visibility = Visibility.Collapsed;
+                CheckTrimEnd.Visibility = Visibility.Collapsed;
+                CheckTrimEndRelative.Visibility = Visibility.Collapsed;
+                TrimEndSettings.Visibility = Visibility.Collapsed;
+            }
+
+            CheckTrimEndRelative.IsEnabled = (notRelativeCompatible && relativeCompatible) || _dataList.All(x => !x.TrimStart && !x.TrimEnd);
+
 
             UpdateEnabled();
         }
@@ -296,10 +303,10 @@ namespace TwitchDownloaderWPF
                 Id = long.Parse(taskData.Id),
                 Quality = (ComboPreferredQuality.SelectedItem as ComboBoxItem)?.Content as string,
                 FfmpegPath = "ffmpeg",
-                TrimBeginning = CheckTrimStart.IsChecked.GetValueOrDefault(),
-                TrimBeginningTime = new TimeSpan((int)NumTrimStartHour.Value, (int)NumTrimStartMinute.Value, (int)NumTrimStartSecond.Value),
-                TrimEnding = CheckTrimEnd.IsChecked.GetValueOrDefault(),
-                TrimEndingTime = taskData.Length - GetRelativeTrimEnd(),
+                TrimBeginning = TrimsOverride ? CheckTrimStart.IsChecked.GetValueOrDefault() : taskData.TrimStart,
+                TrimBeginningTime = TrimsOverride ? GetTrimStart() : taskData.TrimStartTime,
+                TrimEnding = TrimsOverride ? CheckTrimEnd.IsChecked.GetValueOrDefault() : taskData.TrimEnd,
+                TrimEndingTime = TrimsOverride ? GetTrimEnd(taskData.Length) : taskData.TrimEndTime,
                 DownloadThreads = Settings.Default.VodDownloadThreads,
                 ThrottleKib = Settings.Default.DownloadThrottleEnabled
                                 ? Settings.Default.MaximumBandwidthKib
@@ -395,10 +402,10 @@ namespace TwitchDownloaderWPF
                 StvEmotes = CheckStvEmbed.IsChecked.GetValueOrDefault(),
                 TimeFormat = TimestampFormat.Relative,
                 Id = taskData.Id,
-                TrimBeginning = CheckTrimStart.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit), // Clips can't be trimmed
-                TrimBeginningTime = GetTrimStart().TotalSeconds,
-                TrimEnding = CheckTrimEnd.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit),
-                TrimEndingTime = (taskData.Length - GetRelativeTrimEnd()).TotalSeconds,
+                TrimBeginning = TrimsOverride ? CheckTrimStart.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit) : taskData.TrimStart, // Clips can't be trimmed
+                TrimBeginningTime = TrimsOverride ? GetTrimStart().TotalSeconds : taskData.TrimStartTime.TotalSeconds,
+                TrimEnding = TrimsOverride ? CheckTrimEnd.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit) : taskData.TrimEnd,
+                TrimEndingTime = TrimsOverride ? GetTrimEnd(taskData.Length).TotalSeconds : taskData.TrimEndTime.TotalSeconds,
                 FileCollisionCallback = HandleFileCollisionCallback,
                 DelayDownload = checkDelayChat.IsChecked.GetValueOrDefault(),
                 DownloadThreads = Settings.Default.ChatDownloadThreads
@@ -461,10 +468,10 @@ namespace TwitchDownloaderWPF
                 StvEmotes = CheckStvEmbed.IsChecked.GetValueOrDefault(),
                 TextTimestampFormat = TimestampFormat.Relative,
                 InputFile = taskData.FilePath,
-                TrimBeginning = CheckTrimStart.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit), // Clips can't be trimmed
-                TrimBeginningTime = GetTrimStart().TotalSeconds,
-                TrimEnding = CheckTrimEnd.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit),
-                TrimEndingTime = (taskData.Length - GetRelativeTrimEnd()).TotalSeconds,
+                TrimBeginning = TrimsOverride ? CheckTrimStart.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit) : taskData.TrimStart, // Clips can't be trimmed
+                TrimBeginningTime = TrimsOverride ? GetTrimStart().TotalSeconds : taskData.TrimStartTime.TotalSeconds,
+                TrimEnding = TrimsOverride ? CheckTrimEnd.IsChecked.GetValueOrDefault() && taskData.Id.All(char.IsDigit) : taskData.TrimEnd,
+                TrimEndingTime = TrimsOverride ? GetTrimEnd(taskData.Length).TotalSeconds : taskData.TrimEndTime.TotalSeconds,
                 FileCollisionCallback = HandleFileCollisionCallback
             };
             if (radioJson.IsChecked == true)
@@ -516,6 +523,10 @@ namespace TwitchDownloaderWPF
 
         private void EnqueueChatRender(TaskData taskData, string folderPath, TwitchTask dependantTask = null)
         {
+            var trimStart = TrimsOverride ? CheckTrimStart.IsChecked.GetValueOrDefault() : taskData.TrimStart;
+            var trimStartTime = trimStart ? (TrimsOverride ? GetTrimStart() : taskData.TrimStartTime) : TimeSpan.Zero;
+            var trimEnd = TrimsOverride ? CheckTrimEnd.IsChecked.GetValueOrDefault() : taskData.TrimEnd;
+            var trimEndTime = trimEnd ? (TrimsOverride ? GetTrimEnd(taskData.Length) : taskData.TrimEndTime) : taskData.Length;
             string filePath = Path.Combine(folderPath,
                 FilenameService.GetFilename(
                     Settings.Default.TemplateChat,
@@ -524,8 +535,8 @@ namespace TwitchDownloaderWPF
                     taskData.Time,
                     taskData.StreamerName,
                     taskData.StreamerId,
-                    CheckTrimStart.IsChecked.GetValueOrDefault() ? GetTrimStart() : TimeSpan.Zero,
-                    CheckTrimEnd.IsChecked.GetValueOrDefault() ? taskData.Length - GetRelativeTrimEnd() : taskData.Length,
+                    trimStartTime,
+                    trimEndTime,
                     taskData.Length,
                     taskData.Views,
                     taskData.Game,
@@ -538,10 +549,10 @@ namespace TwitchDownloaderWPF
 
             // No need to override if dependant task is already trimmed
             // Both StartOverride and EndOverride need to be set if we want to trim
-            if (dependantTask is null && (CheckTrimStart.IsChecked.GetValueOrDefault() || CheckTrimEnd.IsChecked.GetValueOrDefault()))
+            if (dependantTask is null && (trimStart || trimEnd))
             {
-                renderOptions.StartOverride = CheckTrimStart.IsChecked.GetValueOrDefault() ? (int)GetTrimStart().TotalSeconds : 0;
-                renderOptions.EndOverride = CheckTrimEnd.IsChecked.GetValueOrDefault() ? (int)Math.Ceiling((taskData.Length - GetRelativeTrimEnd()).TotalSeconds) : (int)Math.Ceiling(taskData.Length.TotalSeconds);
+                renderOptions.StartOverride = (int)trimStartTime.TotalSeconds;
+                renderOptions.EndOverride = (int)Math.Ceiling(trimEndTime.TotalSeconds);
             }
 
             ChatRenderTask renderTask = new ChatRenderTask
@@ -567,13 +578,12 @@ namespace TwitchDownloaderWPF
 
         private bool ValidateTrims()
         {
-            var startSeconds = CheckTrimStart.IsChecked.GetValueOrDefault() ? GetTrimStart() : TimeSpan.Zero;
-            var endSeconds = CheckTrimEnd.IsChecked.GetValueOrDefault() ? GetRelativeTrimEnd() : TimeSpan.Zero;
-
             int incompatibleCount = 0;
             foreach (var taskData in _dataList)
             {
-                if (startSeconds + endSeconds >= taskData.Length)
+                var trimStart = CheckTrimStart.IsChecked.GetValueOrDefault() ? GetTrimStart() : TimeSpan.Zero;
+                var trimEnd = CheckTrimEnd.IsChecked.GetValueOrDefault() ? GetTrimEnd(taskData.Length) : taskData.Length;
+                if (trimStart - trimEnd >= TimeSpan.Zero)
                 {
                     incompatibleCount++;
                 }
@@ -645,8 +655,10 @@ namespace TwitchDownloaderWPF
             return new TimeSpan((int)NumTrimStartHour.Value, (int)NumTrimStartMinute.Value, (int)NumTrimStartSecond.Value);
         }
 
-        private TimeSpan GetRelativeTrimEnd()
+        private TimeSpan GetTrimEnd(TimeSpan length)
         {
+            if (CheckTrimEndRelative.IsChecked.GetValueOrDefault())
+                return length - new TimeSpan((int)NumTrimEndHour.Value, (int)NumTrimEndMinute.Value, (int)NumTrimEndSecond.Value);
             return new TimeSpan((int)NumTrimEndHour.Value, (int)NumTrimEndMinute.Value, (int)NumTrimEndSecond.Value);
         }
 
@@ -759,6 +771,24 @@ namespace TwitchDownloaderWPF
                 // On enable
                 checkRender.IsChecked = true;
             }
+        }
+
+        private void CheckTrimEndRelative_CheckChanged(object sender, RoutedEventArgs e)
+        {
+            var allSameLength = _dataList.Select(x => x.Length).Distinct().Count() == 1;
+            var longestLength = _dataList.Max(x => x.Length);
+            TimeSpan trimEnd;
+            if (allSameLength)
+            {
+                trimEnd = CheckTrimEndRelative.IsChecked.GetValueOrDefault() ? GetTrimEnd(longestLength) : longestLength - GetTrimEnd(longestLength);
+            }
+            else
+            {
+                trimEnd = CheckTrimEndRelative.IsChecked.GetValueOrDefault() ? TimeSpan.Zero : longestLength;
+            }
+            NumTrimEndHour.Value = (int)trimEnd.TotalHours;
+            NumTrimEndMinute.Value = trimEnd.Minutes;
+            NumTrimEndSecond.Value = trimEnd.Seconds;
         }
     }
 }

@@ -1067,7 +1067,7 @@
     <value>Trim Start</value>
   </data>
   <data name="TrimEndFull" xml:space="preserve">
-    <value>Trim End (relative)</value>
+    <value>Trim End</value>
   </data>
   <data name="IncompatibleTrims" xml:space="preserve">
     <value>Incompatible Trims</value>
@@ -1079,12 +1079,15 @@
     <value>All ({0}) inputs are incompatible with your trim settings or are clips, which can't be trimmed.</value>
   </data>
   <data name="TrimWarningIncompatibleAndClips" xml:space="preserve">
-    <value>Some ({0}) inputs are incompatible with your trim settings or are clips, which can't be trimmed. If you continue, they won't be trimmed at all.</value>
+    <value>Some ({0}) inputs are incompatible with your trim settings or are clips, which can't be trimmed. If you continue, these won't be trimmed at all.</value>
   </data>
   <data name="TrimWarningIncompatible" xml:space="preserve">
-    <value>Some ({0}) inputs are not compatible with your trim settings. If you continue, they won't be trimmed at all.</value>
+    <value>Some ({0}) inputs are not compatible with your trim settings. If you continue, these won't be trimmed at all.</value>
   </data>
   <data name="TrimWarningClips" xml:space="preserve">
     <value>Some ({0}) inputs are clips, which can't be trimmed.</value>
+  </data>
+  <data name="Relative" xml:space="preserve">
+    <value>Relative</value>
   </data>
 </root>

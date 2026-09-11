@@ -1726,6 +1726,15 @@ namespace TwitchDownloaderWPF.Translations {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Relative.
+        /// </summary>
+        public static string Relative {
+            get {
+                return ResourceManager.GetString("Relative", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Render.
         /// </summary>
         public static string Render {
@@ -2428,7 +2437,7 @@ namespace TwitchDownloaderWPF.Translations {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Trim End (relative).
+        ///   Looks up a localized string similar to Trim End.
         /// </summary>
         public static string TrimEndFull {
             get {
@@ -2491,7 +2500,7 @@ namespace TwitchDownloaderWPF.Translations {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Some ({0}) inputs are not compatible with your trim settings. If you continue, they won&apos;t be trimmed at all..
+        ///   Looks up a localized string similar to Some ({0}) inputs are not compatible with your trim settings. If you continue, these won&apos;t be trimmed at all..
         /// </summary>
         public static string TrimWarningIncompatible {
             get {
@@ -2500,7 +2509,7 @@ namespace TwitchDownloaderWPF.Translations {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Some ({0}) inputs are incompatible with your trim settings or are clips, which can&apos;t be trimmed. If you continue, they won&apos;t be trimmed at all..
+        ///   Looks up a localized string similar to Some ({0}) inputs are incompatible with your trim settings or are clips, which can&apos;t be trimmed. If you continue, these won&apos;t be trimmed at all..
         /// </summary>
         public static string TrimWarningIncompatibleAndClips {
             get {
