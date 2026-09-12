@@ -71,7 +71,7 @@ namespace TwitchDownloaderCore
             }
         }
 
-        public async Task DownloadAsyncImpl(FileInfo outputFileInfo, FileStream outputFs, CancellationToken stoppingToken, CancellationToken cancellationToken)
+        private async Task DownloadAsyncImpl(FileInfo outputFileInfo, FileStream outputFs, CancellationToken stoppingToken, CancellationToken cancellationToken)
         {
             var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, cancellationToken);
 
@@ -102,7 +102,7 @@ namespace TwitchDownloaderCore
             _progress.SetTemplateStatus("Downloading Stream ({0}h{1:m\\ms\\s} downloaded) [2/3]", 0, TimeSpan.Zero, TimeSpan.Zero);
             var progressTemplateIncludesMissingTime = false;
 
-            var downloadState = new StreamDownloadState();
+            var downloadState = new StreamDownloadState(_progress);
             var downloadThreads = new StreamDownloadThread[_downloadOptions.DownloadThreads];
             for (var i = 0; i < _downloadOptions.DownloadThreads; i++)
             {
@@ -114,7 +114,7 @@ namespace TwitchDownloaderCore
 
             try
             {
-                using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+                using var timer = new PeriodicTimer(TimeSpan.FromSeconds(20));
                 do
                 {
                     var playlist = await GetPlaylistAsync(quality, linkedCts.Token);
@@ -127,6 +127,8 @@ namespace TwitchDownloaderCore
                     }
                     streamIds ??= GetStreamIds(playlist);
 
+                    var completedParts = downloadState.AppendSegment(playlist);
+
                     if (!progressTemplateIncludesMissingTime && downloadState.TotalMissingTime > TimeSpan.Zero)
                     {
                         _progress.SetTemplateStatus(
@@ -136,8 +138,6 @@ namespace TwitchDownloaderCore
                             downloadState.TotalMissingTime);
                         progressTemplateIncludesMissingTime = true;
                     }
-
-                    var completedParts = downloadState.AppendSegment(playlist);
 
                     await using var fs = new FileStream(concatListPath, FileMode.Append, FileAccess.Write, FileShare.Read);
                     await FfmpegConcatList.SerializeAsync(fs, completedParts.Select(x => (x.FileName, (decimal)x.Duration.TotalSeconds)), streamIds, cancellationToken);

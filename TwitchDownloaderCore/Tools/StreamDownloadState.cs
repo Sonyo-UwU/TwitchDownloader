@@ -1,9 +1,10 @@
 using System.Collections.Concurrent;
+using TwitchDownloaderCore.Interfaces;
 using TwitchDownloaderCore.Models;
 
 namespace TwitchDownloaderCore.Tools
 {
-    internal sealed class StreamDownloadState
+    internal sealed class StreamDownloadState(ITaskLogger logger)
     {
         public class PartState
         {
@@ -29,14 +30,33 @@ namespace TwitchDownloaderCore.Tools
 
         public TimeSpan TotalMissingTime { get; set; } = TimeSpan.Zero;
 
+        private DateTimeOffset _expectedNextPart = default;
+
         private PartState _lastPartProcessed;
 
         public IEnumerable<PartState> AppendSegment(M3U8 playlist)
         {
+            var firstStream = playlist.Streams[0];
+            if (_expectedNextPart == default)
+            {
+                _expectedNextPart = firstStream.ProgramDateTime;
+            }
+            else
+            {
+                if (firstStream.ProgramDateTime - _expectedNextPart > TimeSpan.Zero)
+                {
+                    logger.LogWarning($"Parts from {_expectedNextPart.ToString("yyyy-MM-ddTHH-mm-ss.fffffff")} to {firstStream.ProgramDateTime.ToString("yyyy-MM-ddTHH-mm-ss.fffffff")} are missing and will be missing from the finalized video");
+                    TotalMissingTime += firstStream.ProgramDateTime - _expectedNextPart;
+                }
+            }
+
             uint? startId = playlist.FileMetadata.TwitchLiveSequence ?? playlist.FileMetadata.MediaSequence;
             for (int i = 0; i < playlist.Streams.Length; i++)
             {
                 M3U8.Stream stream = playlist.Streams[i];
+                if (stream.ProgramDateTime < _expectedNextPart)
+                    continue;
+
                 var filename = startId is not null ? (startId + i).ToString() : stream.ProgramDateTime.ToString("yyyy-MM-ddTHH-mm-ss.fffffff");
                 PartQueue.Enqueue(new()
                 {
@@ -45,6 +65,7 @@ namespace TwitchDownloaderCore.Tools
                     Duration = TimeSpan.FromSeconds((double)stream.PartInfo.Duration),
                     FileName = filename + DownloadTools.GetStreamPartFileExtension(stream.Path)
                 });
+                _expectedNextPart = stream.ProgramDateTime + TimeSpan.FromSeconds((double)stream.PartInfo.Duration);
             }
 
             return GetCorrectedPartStates();
@@ -55,7 +76,11 @@ namespace TwitchDownloaderCore.Tools
             DownloadInProgress = false;
         }
 
-        public IEnumerable<PartState> GetLastParts() => GetCorrectedPartStates().Concat([_lastPartProcessed]);
+        public IEnumerable<PartState> GetLastParts()
+        {
+            _expectedNextPart = DateTimeOffset.MaxValue;
+            return GetCorrectedPartStates().Concat([_lastPartProcessed]);
+        }
 
         private List<PartState> GetCorrectedPartStates()
         {
@@ -80,6 +105,23 @@ namespace TwitchDownloaderCore.Tools
                     correctedParts.Add(_lastPartProcessed);
                     _lastPartProcessed = nextPart;
                 }
+            }
+
+            if (!ProcessedParts.IsEmpty && _expectedNextPart - _lastPartProcessed.ProgramDateTime > TimeSpan.FromSeconds(60))
+            {
+                // There was some parts missing
+                var oldest = ProcessedParts.Values.MinBy(x => x.ProgramDateTime);
+                _lastPartProcessed.Duration = oldest.ProgramDateTime - _lastPartProcessed.ProgramDateTime;
+                correctedParts.Add(_lastPartProcessed);
+                ProcessedParts.TryRemove(oldest.ProgramDateTime, out _lastPartProcessed);
+
+                bool stop = false;
+                do
+                {
+                    var nextParts = GetCorrectedPartStates();
+                    stop = nextParts.Count == 0 || ProcessedParts.IsEmpty;
+                    correctedParts.AddRange(nextParts);
+                } while (!stop);
             }
 
             return correctedParts;
