@@ -1,6 +1,5 @@
 ﻿using TwitchDownloaderCore;
 using TwitchDownloaderCore.Options;
-using TwitchDownloaderWPF.Utils;
 
 namespace TwitchDownloaderWPF.TwitchTasks
 {
@@ -10,13 +9,11 @@ namespace TwitchDownloaderWPF.TwitchTasks
         public override string TaskType { get; } = Translations.Strings.VodDownload;
         public override string OutputFile => DownloadOptions.Filename;
 
-        public override async Task RunAsync()
+        protected override async Task RunAsync()
         {
-            var progress = new WpfTaskProgress(i => Progress = i, s => DisplayStatus = s);
-
             if (DownloadOptions.DelayDownload)
             {
-                var success = await DelayUntilVideoOffline(DownloadOptions.Id, progress);
+                var success = await DelayUntilVideoOffline(DownloadOptions.Id, TaskProgress);
                 if (!success)
                 {
                     ChangeStatus(TwitchTaskStatus.Failed);
@@ -33,7 +30,7 @@ namespace TwitchDownloaderWPF.TwitchTasks
                 return;
             }
 
-            var downloader = new VideoDownloader(DownloadOptions, progress);
+            var downloader = new VideoDownloader(DownloadOptions, TaskProgress);
             ChangeStatus(TwitchTaskStatus.Running);
 
             try
@@ -46,7 +43,7 @@ namespace TwitchDownloaderWPF.TwitchTasks
                 }
                 else
                 {
-                    progress.ReportProgress(100);
+                    TaskProgress.ReportProgress(100);
                     ChangeStatus(TwitchTaskStatus.Finished);
                 }
             }

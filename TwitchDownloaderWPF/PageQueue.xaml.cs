@@ -82,23 +82,23 @@ namespace TwitchDownloaderWPF
                         {
                             case VodDownloadTask when currentVod < maxVod:
                                 currentVod++;
-                                task.RunAsync();
+                                task.Begin();
                                 break;
                             case ClipDownloadTask when currentClip < maxClip:
                                 currentClip++;
-                                task.RunAsync();
+                                task.Begin();
                                 break;
                             case ChatDownloadTask when currentChat < maxChat:
                                 currentChat++;
-                                task.RunAsync();
+                                task.Begin();
                                 break;
                             case ChatUpdateTask when currentChat < maxChat:
                                 currentChat++;
-                                task.RunAsync();
+                                task.Begin();
                                 break;
                             case ChatRenderTask when currentRender < maxRender:
                                 currentRender++;
-                                task.RunAsync();
+                                task.Begin();
                                 break;
                         }
                     }

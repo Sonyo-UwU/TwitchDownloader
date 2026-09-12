@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Windows.Threading;
 using TwitchDownloaderCore.Extensions;
 using TwitchDownloaderCore.Interfaces;
+using TwitchDownloaderWPF.Models;
 using TwitchDownloaderWPF.Properties;
 using TwitchDownloaderWPF.Services;
 using TwitchDownloaderWPF.Utils;
@@ -18,12 +19,14 @@ namespace TwitchDownloaderWPF.TwitchTasks
             DependantTask = dependantTask;
             Status = dependantTask is null ? TwitchTaskStatus.Ready : TwitchTaskStatus.Waiting;
             TokenSource = new();
+            TaskProgress = new WpfTaskProgress(i => Progress = i, s => DisplayStatus = s);
 
             dependantTask?.PropertyChanged += DependantTask_PropertyChanged;
         }
 
         [UsedImplicitly(Reason = "Used by PageQueue bindings")]
         public event PropertyChangedEventHandler PropertyChanged;
+        public event EventHandler<TaskTerminatedEventArgs> TaskTerminated;
 
         public TaskData Info { get; set; }
         public TwitchTask DependantTask { get; set; }
@@ -32,6 +35,7 @@ namespace TwitchDownloaderWPF.TwitchTasks
         public abstract string OutputFile { get; }
 
         protected CancellationTokenSource TokenSource { get; set; }
+        protected ITaskProgress TaskProgress { get; private set; }
 
 
         public int Progress
@@ -77,7 +81,26 @@ namespace TwitchDownloaderWPF.TwitchTasks
         }
 
 
-        public abstract Task RunAsync();
+        protected abstract Task RunAsync();
+
+        public async void Begin()
+        {
+            try
+            {
+                await RunAsync();
+            }
+            finally
+            {
+                OnTaskTerminated();
+            }
+        }
+
+        internal void Begin(LogLevel logLevel, Action<string> handleLog, Action<string> handleFfmpegLog = null)
+        {
+            TaskProgress = new WpfTaskProgress(logLevel, i => Progress = i, s => DisplayStatus = s, handleLog, handleFfmpegLog);
+            Begin();
+        }
+
 
         public void Cancel()
         {
@@ -161,6 +184,11 @@ namespace TwitchDownloaderWPF.TwitchTasks
             }
 
             return true;
+        }
+
+        private void OnTaskTerminated()
+        {
+            TaskTerminated?.Invoke(this, new TaskTerminatedEventArgs(Status == TwitchTaskStatus.Finished));
         }
 
         private void OnPropertyChanged([CallerMemberName] string propertyName = null)

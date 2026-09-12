@@ -1,6 +1,5 @@
 ﻿using TwitchDownloaderCore;
 using TwitchDownloaderCore.Options;
-using TwitchDownloaderWPF.Utils;
 
 namespace TwitchDownloaderWPF.TwitchTasks
 {
@@ -10,7 +9,7 @@ namespace TwitchDownloaderWPF.TwitchTasks
         public override string TaskType { get; } = Translations.Strings.ChatRender;
         public override string OutputFile => RenderOptions.OutputFile;
 
-        public override async Task RunAsync()
+        protected override async Task RunAsync()
         {
             if (TokenSource.IsCancellationRequested)
             {
@@ -20,8 +19,7 @@ namespace TwitchDownloaderWPF.TwitchTasks
                 return;
             }
 
-            var progress = new WpfTaskProgress(i => Progress = i, s => DisplayStatus = s);
-            var renderer = new ChatRenderer(RenderOptions, progress);
+            var renderer = new ChatRenderer(RenderOptions, TaskProgress);
             ChangeStatus(TwitchTaskStatus.Running);
             try
             {
@@ -34,7 +32,7 @@ namespace TwitchDownloaderWPF.TwitchTasks
                 }
                 else
                 {
-                    progress.ReportProgress(100);
+                    TaskProgress.ReportProgress(100);
                     ChangeStatus(TwitchTaskStatus.Finished);
                 }
             }
