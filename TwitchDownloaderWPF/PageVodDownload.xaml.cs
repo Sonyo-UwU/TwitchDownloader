@@ -1,4 +1,5 @@
 ﻿using Microsoft.Win32;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -29,12 +30,89 @@ namespace TwitchDownloaderWPF
     /// </summary>
     public partial class PageVodDownload : Page
     {
-        private TaskData taskData = new();
-        private CancellationTokenSource _cancellationTokenSource;
+        private VodDownloadTask downloadTask;
+        private TaskData taskData => downloadTask.Info;
 
         public PageVodDownload()
         {
+            InitializeDownloadTask();
             InitializeComponent();
+        }
+
+        private void InitializeDownloadTask()
+        {
+            downloadTask?.PropertyChanged -= DownloadTask_PropertyChanged;
+            downloadTask?.TaskTerminated -= DownloadTask_TaskTerminated;
+            downloadTask = new() { Info = new() };
+            downloadTask.PropertyChanged += DownloadTask_PropertyChanged;
+            downloadTask.TaskTerminated += DownloadTask_TaskTerminated;
+        }
+
+        private void DownloadTask_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(downloadTask.StatusImage))
+            {
+                var image = downloadTask.StatusImage ?? "Images/ppHop.gif";
+                SetImage(image, image.EndsWith(".gif"));
+            }
+
+            else if (e.PropertyName == nameof(downloadTask.Progress))
+            {
+                SetPercent(downloadTask.Progress);
+            }
+
+            else if (e.PropertyName == nameof(downloadTask.DisplayStatus))
+            {
+                SetStatus(downloadTask.DisplayStatus);
+            }
+
+            else if (e.PropertyName == nameof(downloadTask.Status))
+            {
+                switch (downloadTask.Status)
+                {
+                    case TwitchTaskStatus.Running:
+                        statusMessage.Text = Translations.Strings.StatusDownloading;
+                        break;
+                    case TwitchTaskStatus.Finished:
+                        statusMessage.Text = Translations.Strings.StatusDone;
+                        break;
+                    case TwitchTaskStatus.Stopping:
+                        statusMessage.Text = Translations.Strings.StatusCanceling;
+                        break;
+                    case TwitchTaskStatus.Failed:
+                        statusMessage.Text = Translations.Strings.StatusError;
+                        break;
+                }
+            }
+
+            else if (e.PropertyName == nameof(downloadTask.Exception))
+            {
+                if (downloadTask.Exception is not null)
+                {
+                    AppendLog(Translations.Strings.ErrorLog + downloadTask.Exception.Message);
+                    if (Settings.Default.VerboseErrors)
+                    {
+                        MessageBox.Show(Application.Current.MainWindow!, downloadTask.Exception.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                }
+            }
+        }
+
+        private void DownloadTask_TaskTerminated(object sender, TaskTerminatedEventArgs e)
+        {
+            if (e.IsSuccessful)
+            {
+                InitializeDownloadTask();
+            }
+            else
+            {
+                downloadTask.Reinitialize();
+                SetEnabled(true);
+            }
+
+            btnGetInfo.IsEnabled = true;
+            SetPercent(0);
+            UpdateActionButtons(false);
         }
 
         private void SetEnabled(bool isEnabled)
@@ -97,7 +175,7 @@ namespace TwitchDownloaderWPF
                     throw new NullReferenceException("Invalid VOD, deleted/expired VOD possibly?");
                 }
 
-                taskData = taskVideoData.Result;
+                downloadTask.Info = taskVideoData.Result;
 
                 imgThumbnail.Source = taskData.Thumbnail;
 
@@ -200,7 +278,7 @@ namespace TwitchDownloaderWPF
 
         public VideoDownloadOptions GetOptions(string filename, string folder)
         {
-            VideoDownloadOptions options = new VideoDownloadOptions
+            var options = new VideoDownloadOptions
             {
                 DownloadThreads = (int)numDownloadThreads.Value,
                 ThrottleKib = Settings.Default.DownloadThrottleEnabled
@@ -284,7 +362,7 @@ namespace TwitchDownloaderWPF
         private static long ValidateUrl(string text)
         {
             var vodIdMatch = IdParse.MatchVideoId(text);
-            if (vodIdMatch is {Success: true} && long.TryParse(vodIdMatch.ValueSpan, out var vodId))
+            if (vodIdMatch is { Success: true } && long.TryParse(vodIdMatch.ValueSpan, out var vodId))
             {
                 return vodId;
             }
@@ -406,7 +484,7 @@ namespace TwitchDownloaderWPF
             UpdateVideoSizeEstimates();
         }
 
-        private async void SplitBtnDownloader_Click(object sender, RoutedEventArgs e)
+        private void SplitBtnDownloader_Click(object sender, RoutedEventArgs e)
         {
             if (((HandyControl.Controls.SplitButton)sender).IsDropDownOpen)
             {
@@ -419,7 +497,7 @@ namespace TwitchDownloaderWPF
                 return;
             }
 
-            SaveFileDialog saveFileDialog = new SaveFileDialog
+            var saveFileDialog = new SaveFileDialog
             {
                 Filter = comboQuality.Text.Contains("Audio", StringComparison.OrdinalIgnoreCase) ? "M4A Files | *.m4a" : "MP4 Files | *.mp4",
                 FileName = FilenameService.GetFilename(
@@ -441,46 +519,14 @@ namespace TwitchDownloaderWPF
                 return;
             }
 
-            SetEnabled(false);
             btnGetInfo.IsEnabled = false;
-
-            VideoDownloadOptions options = GetOptions(saveFileDialog.FileName, null);
-            options.CacheCleanerCallback = HandleCacheCleanerCallback;
-
-            var downloadProgress = new WpfTaskProgress((LogLevel)Settings.Default.LogLevels, SetPercent, SetStatus, AppendLog);
-            VideoDownloader currentDownload = new VideoDownloader(options, downloadProgress);
-            _cancellationTokenSource = new CancellationTokenSource();
-
-            SetImage("Images/ppOverheat.gif", true);
-            statusMessage.Text = Translations.Strings.StatusDownloading;
+            SetEnabled(false);
             UpdateActionButtons(true);
-            try
-            {
-                await currentDownload.DownloadAsync(_cancellationTokenSource.Token);
-                downloadProgress.SetStatus(Translations.Strings.StatusDone);
-                SetImage("Images/ppHop.gif", true);
-            }
-            catch (Exception ex) when (ex is OperationCanceledException or TaskCanceledException && _cancellationTokenSource.IsCancellationRequested)
-            {
-                downloadProgress.SetStatus(Translations.Strings.StatusCanceled);
-                SetImage("Images/ppHop.gif", true);
-            }
-            catch (Exception ex)
-            {
-                downloadProgress.SetStatus(Translations.Strings.StatusError);
-                SetImage("Images/peepoSad.png", false);
-                AppendLog(Translations.Strings.ErrorLog + ex.Message);
-                if (Settings.Default.VerboseErrors)
-                {
-                    MessageBox.Show(Application.Current.MainWindow!, ex.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
-                }
-            }
-            btnGetInfo.IsEnabled = true;
-            downloadProgress.ReportProgress(0);
-            _cancellationTokenSource.Dispose();
-            UpdateActionButtons(false);
 
-            GC.Collect();
+            downloadTask.DownloadOptions = GetOptions(saveFileDialog.FileName, null);
+            downloadTask.DownloadOptions.CacheCleanerCallback = HandleCacheCleanerCallback;
+
+            downloadTask.Begin((LogLevel)Settings.Default.LogLevels, AppendLog);
         }
 
         private DirectoryInfo[] HandleCacheCleanerCallback(DirectoryInfo[] directories)
@@ -500,11 +546,9 @@ namespace TwitchDownloaderWPF
 
         private void BtnCancel_Click(object sender, RoutedEventArgs e)
         {
-            statusMessage.Text = Translations.Strings.StatusCanceling;
-            SetImage("Images/ppStretch.gif", true);
             try
             {
-                _cancellationTokenSource.Cancel();
+                downloadTask.Cancel();
             }
             catch (ObjectDisposedException) { }
         }

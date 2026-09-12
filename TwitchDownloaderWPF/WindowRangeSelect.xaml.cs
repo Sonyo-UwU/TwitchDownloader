@@ -1,7 +1,6 @@
 ﻿using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
-using TwitchDownloaderCore;
 
 namespace TwitchDownloaderWPF
 {
@@ -10,21 +9,23 @@ namespace TwitchDownloaderWPF
     /// </summary>
     public partial class WindowRangeSelect : Window
     {
-        public ChatRenderer CurrentRender { get; set; }
+        public double Start { get; set; }
+        public double End { get; set; }
         public bool OK { get; set; } = false;
         public bool Invalid { get; set; } = false;
         public int startSeconds { get; set; }
         public int endSeconds { get; set; }
-        public WindowRangeSelect(ChatRenderer currentRender)
+        public WindowRangeSelect(double start, double end)
         {
-            CurrentRender = currentRender;
+            Start = start;
+            End = end;
             InitializeComponent();
         }
 
         private void Window_Initialized(object sender, EventArgs e)
         {
-            startSeconds = (int)Math.Floor(CurrentRender.chatRoot.video.start);
-            endSeconds = (int)Math.Ceiling(CurrentRender.chatRoot.video.end);
+            startSeconds = (int)Math.Floor(Start);
+            endSeconds = (int)Math.Ceiling(End);
 
             numStart.Text = startSeconds.ToString(CultureInfo.CurrentCulture);
             numEnd.Text = endSeconds.ToString(CultureInfo.CurrentCulture);

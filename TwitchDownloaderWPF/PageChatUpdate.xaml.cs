@@ -1,4 +1,5 @@
 ﻿using Microsoft.Win32;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -6,11 +7,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
 using TwitchDownloaderCore;
-using TwitchDownloaderCore.Chat;
 using TwitchDownloaderCore.Models;
 using TwitchDownloaderCore.Options;
 using TwitchDownloaderCore.Services;
-using TwitchDownloaderCore.TwitchObjects;
 using TwitchDownloaderCore.TwitchObjects.Gql;
 using TwitchDownloaderWPF.Models;
 using TwitchDownloaderWPF.Properties;
@@ -26,17 +25,95 @@ namespace TwitchDownloaderWPF
     /// </summary>
     public partial class PageChatUpdate : Page
     {
-        private TaskData taskData = new();
-        private CancellationTokenSource _cancellationTokenSource;
+        private ChatUpdateTask updateTask;
+        private TaskData taskData => updateTask.Info;
 
         public PageChatUpdate()
         {
+            InitializeUpdateTask();
             InitializeComponent();
+        }
+
+        private void InitializeUpdateTask()
+        {
+            updateTask?.PropertyChanged -= UpdateTask_PropertyChanged;
+            updateTask?.TaskTerminated -= UpdateTask_TaskTerminated;
+            updateTask = new() { Info = new() };
+            updateTask.PropertyChanged += UpdateTask_PropertyChanged;
+            updateTask.TaskTerminated += UpdateTask_TaskTerminated;
+        }
+
+        private void UpdateTask_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(updateTask.StatusImage))
+            {
+                var image = updateTask.StatusImage ?? "Images/ppHop.gif";
+                SetImage(image, image.EndsWith(".gif"));
+            }
+
+            else if (e.PropertyName == nameof(updateTask.Progress))
+            {
+                SetPercent(updateTask.Progress);
+            }
+
+            else if (e.PropertyName == nameof(updateTask.DisplayStatus))
+            {
+                SetStatus(updateTask.DisplayStatus);
+            }
+
+            else if (e.PropertyName == nameof(updateTask.Status))
+            {
+                switch (updateTask.Status)
+                {
+                    case TwitchTaskStatus.Running:
+                        statusMessage.Text = Translations.Strings.StatusUpdating;
+                        break;
+                    case TwitchTaskStatus.Finished:
+                        statusMessage.Text = Translations.Strings.StatusDone;
+                        break;
+                    case TwitchTaskStatus.Stopping:
+                        statusMessage.Text = Translations.Strings.StatusCanceling;
+                        break;
+                    case TwitchTaskStatus.Failed:
+                        statusMessage.Text = Translations.Strings.StatusError;
+                        break;
+                }
+            }
+
+            else if (e.PropertyName == nameof(updateTask.Exception))
+            {
+                if (updateTask.Exception is not null)
+                {
+                    AppendLog(Translations.Strings.ErrorLog + updateTask.Exception.Message);
+                    if (Settings.Default.VerboseErrors)
+                    {
+                        MessageBox.Show(Application.Current.MainWindow!, updateTask.Exception.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                }
+            }
+        }
+
+        private void UpdateTask_TaskTerminated(object sender, TaskTerminatedEventArgs e)
+        {
+            if (e.IsSuccessful)
+            {
+                InitializeUpdateTask();
+            }
+            else
+            {
+                updateTask.Reinitialize();
+                SetEnabled(true);
+            }
+
+            textJson.Text = "";
+            btnBrowse.IsEnabled = true;
+            SetPercent(0);
+            UpdateActionButtons(false);
         }
 
         private async void btnBrowse_Click(object sender, RoutedEventArgs e)
         {
-            OpenFileDialog openFileDialog = new OpenFileDialog
+            var openFileDialog = new OpenFileDialog
             {
                 Filter = "JSON Files | *.json;*.json.gz"
             };
@@ -59,7 +136,7 @@ namespace TwitchDownloaderWPF
 
             try
             {
-                taskData = await TaskData.FromJsonFileAsync(inputFile);
+                updateTask.Info = await TaskData.FromJsonFileAsync(inputFile);
                 GC.Collect();
             }
             catch (Exception ex)
@@ -306,7 +383,7 @@ namespace TwitchDownloaderWPF
 
         public ChatUpdateOptions GetOptions(string outputFile)
         {
-            ChatUpdateOptions options = new ChatUpdateOptions()
+            var options = new ChatUpdateOptions()
             {
                 EmbedMissing = checkEmbedMissing.IsChecked.GetValueOrDefault(),
                 ReplaceEmbeds = checkReplaceEmbeds.IsChecked.GetValueOrDefault(),
@@ -555,80 +632,20 @@ namespace TwitchDownloaderWPF
                 return;
             }
 
-            try
-            {
-                ChatUpdateOptions updateOptions = GetOptions(saveFileDialog.FileName);
+            updateTask.UpdateOptions = GetOptions(saveFileDialog.FileName);
 
-                var updateProgress = new WpfTaskProgress((LogLevel)Settings.Default.LogLevels, SetPercent, SetStatus, AppendLog);
-                var currentUpdate = new ChatUpdater(updateOptions, updateProgress);
-                try
-                {
-                    await currentUpdate.ParseJsonAsync(CancellationToken.None);
-                }
-                catch (Exception ex)
-                {
-                    AppendLog(Translations.Strings.ErrorLog + ex.Message);
-                    if (Settings.Default.VerboseErrors)
-                    {
-                        MessageBox.Show(Application.Current.MainWindow!, ex.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
-                    }
-                    return;
-                }
+            btnBrowse.IsEnabled = false;
+            SetEnabled(false);
+            UpdateActionButtons(true);
 
-                btnBrowse.IsEnabled = false;
-                SetEnabled(false);
-
-                SetImage("Images/ppOverheat.gif", true);
-                statusMessage.Text = Translations.Strings.StatusUpdating;
-                _cancellationTokenSource = new CancellationTokenSource();
-                UpdateActionButtons(true);
-
-                try
-                {
-                    await currentUpdate.UpdateAsync(_cancellationTokenSource.Token);
-                    textJson.Text = "";
-                    updateProgress.SetStatus(Translations.Strings.StatusDone);
-                    SetImage("Images/ppHop.gif", true);
-                }
-                catch (Exception ex) when (ex is OperationCanceledException or TaskCanceledException && _cancellationTokenSource.IsCancellationRequested)
-                {
-                    updateProgress.SetStatus(Translations.Strings.StatusCanceled);
-                    SetImage("Images/ppHop.gif", true);
-                }
-                catch (Exception ex)
-                {
-                    updateProgress.SetStatus(Translations.Strings.StatusError);
-                    SetImage("Images/peepoSad.png", false);
-                    AppendLog(Translations.Strings.ErrorLog + ex.Message);
-                    if (Settings.Default.VerboseErrors)
-                    {
-                        MessageBox.Show(Application.Current.MainWindow!, ex.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
-                    }
-                }
-                btnBrowse.IsEnabled = true;
-                updateProgress.ReportProgress(0);
-                _cancellationTokenSource.Dispose();
-                UpdateActionButtons(false);
-
-                GC.Collect();
-            }
-            catch (Exception ex)
-            {
-                AppendLog(Translations.Strings.ErrorLog + ex.Message);
-                if (Settings.Default.VerboseErrors)
-                {
-                    MessageBox.Show(Application.Current.MainWindow!, ex.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
-                }
-            }
+            updateTask.Begin((LogLevel)Settings.Default.LogLevels, AppendLog);
         }
 
         private void BtnCancel_Click(object sender, RoutedEventArgs e)
         {
-            statusMessage.Text = Translations.Strings.StatusCanceling;
-            SetImage("Images/ppStretch.gif", true);
             try
             {
-                _cancellationTokenSource.Cancel();
+                updateTask.Cancel();
             }
             catch (ObjectDisposedException) { }
         }

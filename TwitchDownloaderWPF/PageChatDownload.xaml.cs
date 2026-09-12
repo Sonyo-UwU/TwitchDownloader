@@ -1,4 +1,5 @@
 ﻿using Microsoft.Win32;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Windows;
@@ -24,12 +25,89 @@ namespace TwitchDownloaderWPF
     /// </summary>
     public partial class PageChatDownload : Page
     {
-        private TaskData taskData = new();
-        private CancellationTokenSource _cancellationTokenSource;
+        private ChatDownloadTask downloadTask;
+        private TaskData taskData => downloadTask.Info;
 
         public PageChatDownload()
         {
+            InitializeDownloadTask();
             InitializeComponent();
+        }
+
+        private void InitializeDownloadTask()
+        {
+            downloadTask?.PropertyChanged -= DownloadTask_PropertyChanged;
+            downloadTask?.TaskTerminated -= DownloadTask_TaskTerminated;
+            downloadTask = new() { Info = new() };
+            downloadTask.PropertyChanged += DownloadTask_PropertyChanged;
+            downloadTask.TaskTerminated += DownloadTask_TaskTerminated;
+        }
+
+        private void DownloadTask_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(downloadTask.StatusImage))
+            {
+                var image = downloadTask.StatusImage ?? "Images/ppHop.gif";
+                SetImage(image, image.EndsWith(".gif"));
+            }
+
+            else if (e.PropertyName == nameof(downloadTask.Progress))
+            {
+                SetPercent(downloadTask.Progress);
+            }
+
+            else if (e.PropertyName == nameof(downloadTask.DisplayStatus))
+            {
+                SetStatus(downloadTask.DisplayStatus);
+            }
+
+            else if (e.PropertyName == nameof(downloadTask.Status))
+            {
+                switch (downloadTask.Status)
+                {
+                    case TwitchTaskStatus.Running:
+                        statusMessage.Text = Translations.Strings.StatusDownloading;
+                        break;
+                    case TwitchTaskStatus.Finished:
+                        statusMessage.Text = Translations.Strings.StatusDone;
+                        break;
+                    case TwitchTaskStatus.Stopping:
+                        statusMessage.Text = Translations.Strings.StatusCanceling;
+                        break;
+                    case TwitchTaskStatus.Failed:
+                        statusMessage.Text = Translations.Strings.StatusError;
+                        break;
+                }
+            }
+
+            else if (e.PropertyName == nameof(downloadTask.Exception))
+            {
+                if (downloadTask.Exception is not null)
+                {
+                    AppendLog(Translations.Strings.ErrorLog + downloadTask.Exception.Message);
+                    if (Settings.Default.VerboseErrors)
+                    {
+                        MessageBox.Show(Application.Current.MainWindow!, downloadTask.Exception.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                }
+            }
+        }
+
+        private void DownloadTask_TaskTerminated(object sender, TaskTerminatedEventArgs e)
+        {
+            if (e.IsSuccessful)
+            {
+                InitializeDownloadTask();
+            }
+            else
+            {
+                downloadTask.Reinitialize();
+                SetEnabled(true);
+            }
+
+            btnGetInfo.IsEnabled = true;
+            SetPercent(0);
+            UpdateActionButtons(false);
         }
 
         private void Page_Initialized(object sender, EventArgs e)
@@ -115,7 +193,7 @@ namespace TwitchDownloaderWPF
 
             try
             {
-                taskData = await TaskData.FromVideoIdAsync(id);
+                downloadTask.Info = await TaskData.FromVideoIdAsync(id);
 
                 imgThumbnail.Source = taskData.Thumbnail;
 
@@ -235,7 +313,7 @@ namespace TwitchDownloaderWPF
 
         public ChatDownloadOptions GetOptions(string filename)
         {
-            ChatDownloadOptions options = new ChatDownloadOptions();
+            var options = new ChatDownloadOptions();
 
             if (radioJson.IsChecked == true)
                 options.DownloadFormat = ChatFormat.Json;
@@ -253,14 +331,14 @@ namespace TwitchDownloaderWPF
             if (CheckTrimStart.IsChecked == true)
             {
                 options.TrimBeginning = true;
-                TimeSpan start = new TimeSpan((int)numStartHour.Value, (int)numStartMinute.Value, (int)numStartSecond.Value);
+                var start = new TimeSpan((int)numStartHour.Value, (int)numStartMinute.Value, (int)numStartSecond.Value);
                 options.TrimBeginningTime = (int)start.TotalSeconds;
             }
 
             if (CheckTrimEnd.IsChecked == true)
             {
                 options.TrimEnding = true;
-                TimeSpan end = new TimeSpan((int)numEndHour.Value, (int)numEndMinute.Value, (int)numEndSecond.Value);
+                var end = new TimeSpan((int)numEndHour.Value, (int)numEndMinute.Value, (int)numEndSecond.Value);
                 options.TrimEndingTime = (int)end.TotalSeconds;
             }
 
@@ -460,7 +538,7 @@ namespace TwitchDownloaderWPF
             }
         }
 
-        private async void SplitBtnDownload_Click(object sender, RoutedEventArgs e)
+        private void SplitBtnDownload_Click(object sender, RoutedEventArgs e)
         {
             if (((HandyControl.Controls.SplitButton)sender).IsDropDownOpen)
             {
@@ -499,67 +577,25 @@ namespace TwitchDownloaderWPF
                 saveFileDialog.FileName += ".txt";
             }
 
-            if (saveFileDialog.ShowDialog() != true)
+            if (saveFileDialog.ShowDialog() == false)
             {
                 return;
             }
 
-            try
-            {
-                ChatDownloadOptions downloadOptions = GetOptions(saveFileDialog.FileName);
+            btnGetInfo.IsEnabled = false;
+            SetEnabled(false);
+            UpdateActionButtons(true);
 
-                var downloadProgress = new WpfTaskProgress((LogLevel)Settings.Default.LogLevels, SetPercent, SetStatus, AppendLog);
-                var currentDownload = new ChatDownloader(downloadOptions, downloadProgress);
+            downloadTask.DownloadOptions = GetOptions(saveFileDialog.FileName);
 
-                btnGetInfo.IsEnabled = false;
-                SetEnabled(false);
-
-                SetImage("Images/ppOverheat.gif", true);
-                statusMessage.Text = Translations.Strings.StatusDownloading;
-                _cancellationTokenSource = new CancellationTokenSource();
-                UpdateActionButtons(true);
-
-                try
-                {
-                    await currentDownload.DownloadAsync(_cancellationTokenSource.Token);
-                    downloadProgress.SetStatus(Translations.Strings.StatusDone);
-                    SetImage("Images/ppHop.gif", true);
-                }
-                catch (Exception ex) when (ex is OperationCanceledException or TaskCanceledException && _cancellationTokenSource.IsCancellationRequested)
-                {
-                    downloadProgress.SetStatus(Translations.Strings.StatusCanceled);
-                    SetImage("Images/ppHop.gif", true);
-                }
-                catch (Exception ex)
-                {
-                    downloadProgress.SetStatus(Translations.Strings.StatusError);
-                    SetImage("Images/peepoSad.png", false);
-                    AppendLog(Translations.Strings.ErrorLog + ex.Message);
-                    if (Settings.Default.VerboseErrors)
-                    {
-                        MessageBox.Show(Application.Current.MainWindow!, ex.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
-                    }
-                }
-                btnGetInfo.IsEnabled = true;
-                downloadProgress.ReportProgress(0);
-                _cancellationTokenSource.Dispose();
-                UpdateActionButtons(false);
-
-                GC.Collect();
-            }
-            catch (Exception ex)
-            {
-                AppendLog(Translations.Strings.ErrorLog + ex.Message);
-            }
+            downloadTask.Begin((LogLevel)Settings.Default.LogLevels, AppendLog);
         }
 
         private void BtnCancel_Click(object sender, RoutedEventArgs e)
         {
-            statusMessage.Text = Translations.Strings.StatusCanceling;
-            SetImage("Images/ppStretch.gif", true);
             try
             {
-                _cancellationTokenSource.Cancel();
+                downloadTask.Cancel();
             }
             catch (ObjectDisposedException) { }
         }

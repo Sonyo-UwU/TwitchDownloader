@@ -1,6 +1,7 @@
 ﻿using HandyControl.Controls;
 using Microsoft.Win32;
 using SkiaSharp;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
@@ -12,7 +13,6 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
-using TwitchDownloaderCore;
 using TwitchDownloaderCore.Chat;
 using TwitchDownloaderCore.Options;
 using TwitchDownloaderCore.TwitchObjects;
@@ -33,13 +33,97 @@ namespace TwitchDownloaderWPF
     public partial class PageChatRender : Page
     {
         private readonly SKFontManager fontManager = SKFontManager.CreateDefault();
-        private TaskData taskData;
-        private CancellationTokenSource _cancellationTokenSource;
+        private readonly List<string> ffmpegLog = [];
+        private ChatRenderTask renderTask;
+        private TaskData taskData => renderTask.Info;
 
         public PageChatRender()
         {
+            InitializeRenderTask();
             InitializeComponent();
             App.CultureServiceSingleton.CultureChanged += OnCultureChanged;
+        }
+
+        private void InitializeRenderTask()
+        {
+            renderTask?.PropertyChanged -= RenderTask_PropertyChanged;
+            renderTask?.TaskTerminated -= RenderTask_TaskTerminated;
+            renderTask = new() { Info = new() };
+            renderTask.PropertyChanged += RenderTask_PropertyChanged;
+            renderTask.TaskTerminated += RenderTask_TaskTerminated;
+        }
+
+        private void RenderTask_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(renderTask.StatusImage))
+            {
+                var image = renderTask.StatusImage ?? "Images/ppHop.gif";
+                SetImage(image, image.EndsWith(".gif"));
+            }
+
+            else if (e.PropertyName == nameof(renderTask.Progress))
+            {
+                SetPercent(renderTask.Progress);
+            }
+
+            else if (e.PropertyName == nameof(renderTask.DisplayStatus))
+            {
+                SetStatus(renderTask.DisplayStatus);
+            }
+
+            else if (e.PropertyName == nameof(renderTask.Status))
+            {
+                switch (renderTask.Status)
+                {
+                    case TwitchTaskStatus.Running:
+                        statusMessage.Text = Translations.Strings.StatusRendering;
+                        break;
+                    case TwitchTaskStatus.Finished:
+                        statusMessage.Text = Translations.Strings.StatusDone;
+                        break;
+                    case TwitchTaskStatus.Stopping:
+                        statusMessage.Text = Translations.Strings.StatusCanceling;
+                        break;
+                    case TwitchTaskStatus.Failed:
+                        statusMessage.Text = Translations.Strings.StatusError;
+                        break;
+                }
+            }
+
+            else if (e.PropertyName == nameof(renderTask.Exception))
+            {
+                if (renderTask.Exception is not null)
+                {
+                    AppendLog(Translations.Strings.ErrorLog + renderTask.Exception.Message);
+                    if (Settings.Default.VerboseErrors)
+                    {
+                        if (renderTask.Exception.Message.Contains("The pipe has been ended"))
+                        {
+                            var errorLog = string.Join('\n', ffmpegLog.TakeLast(20).ToArray());
+                            MessageBox.Show(Application.Current.MainWindow!, errorLog, Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
+                        }
+                        else
+                        {
+                            MessageBox.Show(Application.Current.MainWindow!, renderTask.Exception.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
+                        }
+                    }
+                }
+            }
+        }
+
+        private void RenderTask_TaskTerminated(object sender, TaskTerminatedEventArgs e)
+        {
+            if (e.IsSuccessful)
+            {
+                InitializeRenderTask();
+            }
+            else
+            {
+                renderTask.Reinitialize();
+            }
+
+            SetPercent(0);
+            UpdateActionButtons(false);
         }
 
         private void OnCultureChanged(object sender, CultureInfo e)
@@ -62,7 +146,7 @@ namespace TwitchDownloaderWPF
                 return;
             }
 
-            taskData = await TaskData.FromJsonFileAsync(openFileDialog.FileName);
+            renderTask.Info = await TaskData.FromJsonFileAsync(openFileDialog.FileName);
             textJson.Text = taskData.FilePath;
             UpdateActionButtons(false);
         }
@@ -601,7 +685,7 @@ namespace TwitchDownloaderWPF
                 }
 
                 string fileFormat = comboFormat.SelectedItem.ToString()!;
-                SaveFileDialog saveFileDialog = new SaveFileDialog
+                var saveFileDialog = new SaveFileDialog
                 {
                     Filter = $"{fileFormat} Files | *.{fileFormat.ToLower()}",
                     FileName = Path.GetFileNameWithoutExtension(textJson.Text.Replace(".gz", "")) + "." + fileFormat.ToLower()
@@ -613,30 +697,14 @@ namespace TwitchDownloaderWPF
 
                 SaveSettings();
 
-                
-                List<string> ffmpegLog = [];
 
-                ChatRenderOptions options = GetOptions(saveFileDialog.FileName);
+                ffmpegLog.Clear();
 
-                var renderProgress = new WpfTaskProgress((LogLevel)Settings.Default.LogLevels, SetPercent, SetStatus, AppendLog, ffmpegLog.Add);
-                ChatRenderer currentRender = new ChatRenderer(options, renderProgress);
-                try
-                {
-                    await currentRender.ParseJsonAsync(CancellationToken.None);
-                }
-                catch (Exception ex)
-                {
-                    AppendLog(Translations.Strings.ErrorLog + ex.Message);
-                    if (Settings.Default.VerboseErrors)
-                    {
-                        MessageBox.Show(Application.Current.MainWindow!, ex.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
-                    }
-                    return;
-                }
+                renderTask.RenderOptions = GetOptions(saveFileDialog.FileName);
 
                 if (ReferenceEquals(sender, MenuItemPartialRender))
                 {
-                    var window = new WindowRangeSelect(currentRender)
+                    var window = new WindowRangeSelect(renderTask.Info.TrimStartTime.TotalSeconds, renderTask.Info.TrimEndTime.TotalSeconds)
                     {
                         Owner = Application.Current.MainWindow,
                         WindowStartupLocation = WindowStartupLocation.CenterOwner
@@ -645,8 +713,8 @@ namespace TwitchDownloaderWPF
 
                     if (window.OK)
                     {
-                        options.StartOverride = window.startSeconds;
-                        options.EndOverride = window.endSeconds;
+                        renderTask.RenderOptions.StartOverride = window.startSeconds;
+                        renderTask.RenderOptions.EndOverride = window.endSeconds;
                     }
                     else
                     {
@@ -658,45 +726,8 @@ namespace TwitchDownloaderWPF
                     }
                 }
 
-                SetImage("Images/ppOverheat.gif", true);
-                statusMessage.Text = Translations.Strings.StatusRendering;
-                _cancellationTokenSource = new CancellationTokenSource();
                 UpdateActionButtons(true);
-                try
-                {
-                    await currentRender.RenderVideoAsync(_cancellationTokenSource.Token);
-                    renderProgress.SetStatus(Translations.Strings.StatusDone);
-                    SetImage("Images/ppHop.gif", true);
-                }
-                catch (Exception ex) when (ex is OperationCanceledException or TaskCanceledException && _cancellationTokenSource.IsCancellationRequested)
-                {
-                    renderProgress.SetStatus(Translations.Strings.StatusCanceled);
-                    SetImage("Images/ppHop.gif", true);
-                }
-                catch (Exception ex)
-                {
-                    renderProgress.SetStatus(Translations.Strings.StatusError);
-                    SetImage("Images/peepoSad.png", false);
-                    AppendLog(Translations.Strings.ErrorLog + ex.Message);
-                    if (Settings.Default.VerboseErrors)
-                    {
-                        if (ex.Message.Contains("The pipe has been ended"))
-                        {
-                            string errorLog = String.Join('\n', ffmpegLog.TakeLast(20).ToArray());
-                            MessageBox.Show(Application.Current.MainWindow!, errorLog, Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
-                        }
-                        else
-                        {
-                            MessageBox.Show(Application.Current.MainWindow!, ex.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
-                        }
-                    }
-                }
-                renderProgress.ReportProgress(0);
-                _cancellationTokenSource.Dispose();
-                UpdateActionButtons(false);
-
-                currentRender.Dispose();
-                GC.Collect();
+                renderTask.Begin((LogLevel)Settings.Default.LogLevels, AppendLog, ffmpegLog.Add);
             }
         }
 
@@ -707,11 +738,9 @@ namespace TwitchDownloaderWPF
 
         private void BtnCancel_Click(object sender, RoutedEventArgs e)
         {
-            statusMessage.Text = Translations.Strings.StatusCanceling;
-            SetImage("Images/ppStretch.gif", true);
             try
             {
-                _cancellationTokenSource.Cancel();
+                renderTask.Cancel();
             }
             catch (ObjectDisposedException) { }
         }
@@ -753,7 +782,7 @@ namespace TwitchDownloaderWPF
             if (!IsInitialized)
                 return;
 
-            taskData = await TaskData.FromJsonFileAsync(textJson.Text);
+            renderTask.Info = await TaskData.FromJsonFileAsync(textJson.Text);
             UpdateActionButtons(false);
         }
 
