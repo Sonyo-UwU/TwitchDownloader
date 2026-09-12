@@ -30,6 +30,8 @@ namespace TwitchDownloaderCore.Tools
 
         public TimeSpan TotalMissingTime { get; set; } = TimeSpan.Zero;
 
+        public Lock TimeWriteLock { get; } = new();
+
         private DateTimeOffset _expectedNextPart = default;
 
         private PartState _lastPartProcessed;
@@ -46,7 +48,11 @@ namespace TwitchDownloaderCore.Tools
                 if (firstStream.ProgramDateTime - _expectedNextPart > TimeSpan.Zero)
                 {
                     logger.LogWarning($"Parts from {_expectedNextPart.ToString("yyyy-MM-ddTHH-mm-ss.fffffff")} to {firstStream.ProgramDateTime.ToString("yyyy-MM-ddTHH-mm-ss.fffffff")} are missing and will be missing from the finalized video");
-                    TotalMissingTime += firstStream.ProgramDateTime - _expectedNextPart;
+
+                    lock (TimeWriteLock)
+                    {
+                        TotalMissingTime += firstStream.ProgramDateTime - _expectedNextPart;
+                    }
                 }
             }
 

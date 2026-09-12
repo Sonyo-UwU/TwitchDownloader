@@ -6,6 +6,8 @@ using TwitchDownloaderCLI.Models;
 using TwitchDownloaderCLI.Modes;
 using TwitchDownloaderCLI.Modes.Arguments;
 using TwitchDownloaderCLI.Tools;
+using TwitchDownloaderCore;
+using TwitchDownloaderCore.Options;
 using TwitchDownloaderCore.Tools;
 
 namespace TwitchDownloaderCLI
@@ -14,6 +16,34 @@ namespace TwitchDownloaderCLI
     {
         private static void Main(string[] args)
         {
+            var options = new StreamDownloadOptions()
+            {
+                ChannelLogin = "cakejumper",
+                Quality = "worst",
+                DownloadThreads = 4,
+                FfmpegPath = FfmpegHandler.FfmpegExecutableName,
+                Filename = @"D:\Projets C#\temp\livetest\test.mp4",
+                TempFolder = @"D:\Projets C#\temp\livetest"
+            };
+            //var progress = new CliTaskProgress(LogLevel.Status | LogLevel.Error | LogLevel.Warning | LogLevel.Verbose);
+            var progress = new CliTaskProgress(LogLevel.All);
+            var downloader = new StreamDownloader(options, progress);
+
+            var cts = new CancellationTokenSource();
+
+            void Console_CancelKeyPress(object sender, ConsoleCancelEventArgs e)
+            {
+                if (cts.IsCancellationRequested)
+                    return;
+
+                e.Cancel = true;
+                cts.Cancel();
+            }
+
+            Console.CancelKeyPress += Console_CancelKeyPress;
+
+            downloader.DownloadAsync(cts.Token, CancellationToken.None).GetAwaiter().GetResult();
+            return;
             var preParsedArgs = PreParseArgs.Parse(args, Path.GetFileName(Environment.ProcessPath));
 
             var parser = new Parser(config =>

@@ -59,7 +59,11 @@ namespace TwitchDownloaderCore.Tools
                         {
                             videoPart.IsDownloaded = true;
                             _downloadState.ProcessedParts[videoPart.ProgramDateTime] = videoPart;
-                            _downloadState.TotalDownloadedTime += videoPart.Duration;
+
+                            lock (_downloadState.TimeWriteLock)
+                            {
+                                _downloadState.TotalDownloadedTime += videoPart.Duration;
+                            }
                             _progress.ReportProgress((int)_downloadState.TotalDownloadedTime.TotalHours, _downloadState.TotalDownloadedTime, _downloadState.TotalMissingTime);
                         }
                     }
@@ -71,7 +75,12 @@ namespace TwitchDownloaderCore.Tools
 
                         videoPart.IsDownloaded = false;
                         _downloadState.ProcessedParts[videoPart.ProgramDateTime] = videoPart;
-                        _downloadState.TotalMissingTime += videoPart.Duration;
+
+                        lock (_downloadState.TimeWriteLock)
+                        {
+                            _downloadState.TotalMissingTime += videoPart.Duration;
+                        }
+
                         _progress.ReportProgress((int)_downloadState.TotalDownloadedTime.TotalHours, _downloadState.TotalDownloadedTime, _downloadState.TotalMissingTime);
                     }
                 }
