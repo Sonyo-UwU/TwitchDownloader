@@ -4,25 +4,11 @@ using TwitchDownloaderWPF.Utils;
 
 namespace TwitchDownloaderWPF.TwitchTasks
 {
-    internal class VodDownloadTask : TwitchTask
+    internal class VodDownloadTask(VideoDownloadOptions downloadOptions, TaskData info, TwitchTask dependantTask = null) : TwitchTask(info, dependantTask)
     {
-        public VideoDownloadOptions DownloadOptions { get; init; }
+        public VideoDownloadOptions DownloadOptions { get; } = downloadOptions;
         public override string TaskType { get; } = Translations.Strings.VodDownload;
         public override string OutputFile => DownloadOptions.Filename;
-
-        public override void Reinitialize()
-        {
-            Progress = 0;
-            TokenSource = new CancellationTokenSource();
-            Exception = null;
-            CanReinitialize = false;
-            ChangeStatus(TwitchTaskStatus.Ready);
-        }
-
-        public override bool CanRun()
-        {
-            return Status == TwitchTaskStatus.Ready;
-        }
 
         public override async Task RunAsync()
         {
@@ -47,7 +33,7 @@ namespace TwitchDownloaderWPF.TwitchTasks
                 return;
             }
 
-            VideoDownloader downloader = new VideoDownloader(DownloadOptions, progress);
+            var downloader = new VideoDownloader(DownloadOptions, progress);
             ChangeStatus(TwitchTaskStatus.Running);
 
             try
@@ -76,7 +62,7 @@ namespace TwitchDownloaderWPF.TwitchTasks
                 CanReinitialize = true;
             }
             TokenSource.Dispose();
-            GC.Collect(-1, GCCollectionMode.Default, false);
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Default, false);
         }
     }
 }

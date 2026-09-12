@@ -327,15 +327,7 @@ namespace TwitchDownloaderWPF
                     taskData.Game) +
                 FilenameService.GuessVodFileExtension(downloadOptions.Quality));
 
-            var downloadTask = new VodDownloadTask
-            {
-                DownloadOptions = downloadOptions,
-                Info =
-                {
-                    Title = taskData.Title,
-                    Thumbnail = taskData.Thumbnail
-                }
-            };
+            var downloadTask = new VodDownloadTask(downloadOptions, taskData);
 
             lock (PageQueue.TaskLock)
             {
@@ -372,15 +364,7 @@ namespace TwitchDownloaderWPF
                 FileCollisionCallback = HandleFileCollisionCallback,
             };
 
-            var downloadTask = new ClipDownloadTask
-            {
-                DownloadOptions = downloadOptions,
-                Info =
-                {
-                    Title = taskData.Title,
-                    Thumbnail = taskData.Thumbnail
-                }
-            };
+            var downloadTask = new ClipDownloadTask(downloadOptions, taskData);
 
             lock (PageQueue.TaskLock)
             {
@@ -432,15 +416,7 @@ namespace TwitchDownloaderWPF
                     taskData.ClipperId) +
                 downloadOptions.FileExtension);
 
-            var downloadTask = new ChatDownloadTask
-            {
-                DownloadOptions = downloadOptions,
-                Info =
-                {
-                    Title = taskData.Title,
-                    Thumbnail = taskData.Thumbnail
-                }
-            };
+            var downloadTask = new ChatDownloadTask(downloadOptions, taskData);
 
             lock (PageQueue.TaskLock)
             {
@@ -496,15 +472,7 @@ namespace TwitchDownloaderWPF
                     taskData.ClipperId) +
                 updateOptions.FileExtension);
 
-            var updateTask = new ChatUpdateTask
-            {
-                UpdateOptions = updateOptions,
-                Info =
-                {
-                    Title = taskData.Title,
-                    Thumbnail = taskData.Thumbnail
-                }
-            };
+            var updateTask = new ChatUpdateTask(updateOptions, taskData);
 
             lock (PageQueue.TaskLock)
             {
@@ -551,20 +519,7 @@ namespace TwitchDownloaderWPF
                 renderOptions.EndOverride = (int)Math.Ceiling(trimEndTime.TotalSeconds);
             }
 
-            var renderTask = new ChatRenderTask
-            {
-                DownloadOptions = renderOptions,
-                Info =
-                {
-                    Title = taskData.Title,
-                    Thumbnail = taskData.Thumbnail
-                },
-                DependantTask = dependantTask
-            };
-            if (dependantTask is not null)
-            {
-                renderTask.ChangeStatus(TwitchTaskStatus.Waiting);
-            }
+            var renderTask = new ChatRenderTask(renderOptions, taskData, dependantTask);
 
             lock (PageQueue.TaskLock)
             {

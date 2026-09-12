@@ -12,10 +12,27 @@ namespace TwitchDownloaderWPF.TwitchTasks
 {
     public abstract class TwitchTask : INotifyPropertyChanged
     {
+        public TwitchTask(TaskData info, TwitchTask dependantTask = null)
+        {
+            Info = info;
+            DependantTask = dependantTask;
+            Status = dependantTask is null ? TwitchTaskStatus.Ready : TwitchTaskStatus.Waiting;
+            TokenSource = new();
+
+            dependantTask?.PropertyChanged += DependantTask_PropertyChanged;
+        }
+
         [UsedImplicitly(Reason = "Used by PageQueue bindings")]
         public event PropertyChangedEventHandler PropertyChanged;
 
-        public TaskData Info { get; } = new();
+        public TaskData Info { get; set; }
+        public TwitchTask DependantTask { get; set; }
+
+        public abstract string TaskType { get; }
+        public abstract string OutputFile { get; }
+
+        protected CancellationTokenSource TokenSource { get; set; }
+
 
         public int Progress
         {
@@ -41,17 +58,11 @@ namespace TwitchDownloaderWPF.TwitchTasks
             private set => SetField(ref field, value);
         }
 
-        protected CancellationTokenSource TokenSource { get; set; } = new();
-        public TwitchTask DependantTask { get; init; }
-        public abstract string TaskType { get; }
-
         public Exception Exception
         {
             get;
             protected set => SetField(ref field, value);
         }
-
-        public abstract string OutputFile { get; }
 
         public bool CanCancel
         {
@@ -65,6 +76,9 @@ namespace TwitchDownloaderWPF.TwitchTasks
             protected set => SetField(ref field, value);
         }
 
+
+        public abstract Task RunAsync();
+
         public void Cancel()
         {
             if (!CanCancel)
@@ -75,11 +89,19 @@ namespace TwitchDownloaderWPF.TwitchTasks
             ChangeStatus(Status is TwitchTaskStatus.Running ? TwitchTaskStatus.Stopping : TwitchTaskStatus.Canceled);
         }
 
-        public abstract void Reinitialize();
+        public void Reinitialize()
+        {
+            Progress = 0;
+            TokenSource = new CancellationTokenSource();
+            Exception = null;
+            CanReinitialize = false;
+            ChangeStatus(TwitchTaskStatus.Ready);
+        }
 
-        public abstract bool CanRun();
-
-        public abstract Task RunAsync();
+        public bool CanRun()
+        {
+            return Status == TwitchTaskStatus.Ready;
+        }
 
         public void ChangeStatus(TwitchTaskStatus newStatus)
         {
@@ -99,6 +121,7 @@ namespace TwitchDownloaderWPF.TwitchTasks
                     TwitchTaskStatus.Running => "Images/ppOverheat.gif",
                     TwitchTaskStatus.Ready or TwitchTaskStatus.Waiting => "Images/ppHop.gif",
                     TwitchTaskStatus.Stopping => "Images/ppStretch.gif",
+                    TwitchTaskStatus.Failed => "Images/peepoSad.png",
                     _ => null
                 };
             }
@@ -153,6 +176,22 @@ namespace TwitchDownloaderWPF.TwitchTasks
             field = value;
             OnPropertyChanged(propertyName);
             return true;
+        }
+
+        private void DependantTask_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(Status))
+            {
+                if (DependantTask.Status == TwitchTaskStatus.Finished)
+                {
+                    ChangeStatus(TwitchTaskStatus.Ready);
+                }
+                else if (DependantTask.Status is TwitchTaskStatus.Failed or TwitchTaskStatus.Canceled)
+                {
+                    ChangeStatus(TwitchTaskStatus.Canceled);
+                    CanReinitialize = true;
+                }
+            }
         }
     }
 }

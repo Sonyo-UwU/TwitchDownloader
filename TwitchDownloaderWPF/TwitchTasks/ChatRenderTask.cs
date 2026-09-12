@@ -4,45 +4,11 @@ using TwitchDownloaderWPF.Utils;
 
 namespace TwitchDownloaderWPF.TwitchTasks
 {
-    internal class ChatRenderTask : TwitchTask
+    internal class ChatRenderTask(ChatRenderOptions renderOptions, TaskData info, TwitchTask dependantTask = null) : TwitchTask(info, dependantTask)
     {
-        public ChatRenderOptions DownloadOptions { get; init; }
+        public ChatRenderOptions RenderOptions { get; } = renderOptions;
         public override string TaskType { get; } = Translations.Strings.ChatRender;
-        public override string OutputFile => DownloadOptions.OutputFile;
-
-        public override void Reinitialize()
-        {
-            Progress = 0;
-            TokenSource = new CancellationTokenSource();
-            Exception = null;
-            CanReinitialize = false;
-            ChangeStatus(DependantTask is null ? TwitchTaskStatus.Ready : TwitchTaskStatus.Waiting);
-        }
-
-        public override bool CanRun()
-        {
-            if (DependantTask == null)
-            {
-                return Status == TwitchTaskStatus.Ready;
-            }
-
-            if (Status == TwitchTaskStatus.Waiting)
-            {
-                if (DependantTask.Status == TwitchTaskStatus.Finished)
-                {
-                    return true;
-                }
-
-                if (DependantTask.Status is TwitchTaskStatus.Failed or TwitchTaskStatus.Canceled)
-                {
-                    ChangeStatus(TwitchTaskStatus.Canceled);
-                    CanReinitialize = true;
-                    return false;
-                }
-            }
-
-            return false;
-        }
+        public override string OutputFile => RenderOptions.OutputFile;
 
         public override async Task RunAsync()
         {
@@ -55,7 +21,7 @@ namespace TwitchDownloaderWPF.TwitchTasks
             }
 
             var progress = new WpfTaskProgress(i => Progress = i, s => DisplayStatus = s);
-            ChatRenderer renderer = new ChatRenderer(DownloadOptions, progress);
+            var renderer = new ChatRenderer(RenderOptions, progress);
             ChangeStatus(TwitchTaskStatus.Running);
             try
             {
@@ -85,7 +51,7 @@ namespace TwitchDownloaderWPF.TwitchTasks
             }
             renderer.Dispose();
             TokenSource.Dispose();
-            GC.Collect(-1, GCCollectionMode.Default, false);
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Default, false);
         }
     }
 }

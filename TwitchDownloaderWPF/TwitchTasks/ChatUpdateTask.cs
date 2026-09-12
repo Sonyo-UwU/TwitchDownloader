@@ -4,25 +4,11 @@ using TwitchDownloaderWPF.Utils;
 
 namespace TwitchDownloaderWPF.TwitchTasks
 {
-    internal class ChatUpdateTask : TwitchTask
+    internal class ChatUpdateTask(ChatUpdateOptions updateOptions, TaskData info, TwitchTask dependantTask = null) : TwitchTask(info, dependantTask)
     {
-        public ChatUpdateOptions UpdateOptions { get; init; }
+        public ChatUpdateOptions UpdateOptions { get; } = updateOptions;
         public override string TaskType { get; } = Translations.Strings.ChatUpdate;
         public override string OutputFile => UpdateOptions.OutputFile;
-
-        public override void Reinitialize()
-        {
-            Progress = 0;
-            TokenSource = new CancellationTokenSource();
-            Exception = null;
-            CanReinitialize = false;
-            ChangeStatus(TwitchTaskStatus.Ready);
-        }
-
-        public override bool CanRun()
-        {
-            return Status == TwitchTaskStatus.Ready;
-        }
 
         public override async Task RunAsync()
         {
@@ -35,7 +21,7 @@ namespace TwitchDownloaderWPF.TwitchTasks
             }
 
             var progress = new WpfTaskProgress(i => Progress = i, s => DisplayStatus = s);
-            ChatUpdater updater = new ChatUpdater(UpdateOptions, progress);
+            var updater = new ChatUpdater(UpdateOptions, progress);
             ChangeStatus(TwitchTaskStatus.Running);
             try
             {
@@ -64,7 +50,7 @@ namespace TwitchDownloaderWPF.TwitchTasks
                 CanReinitialize = true;
             }
             TokenSource.Dispose();
-            GC.Collect(-1, GCCollectionMode.Default, false);
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Default, false);
         }
     }
 }
