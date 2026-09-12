@@ -3,9 +3,9 @@ using TwitchDownloaderCore.Options;
 
 namespace TwitchDownloaderWPF.TwitchTasks
 {
-    internal class VodDownloadTask(VideoDownloadOptions downloadOptions, TaskData info, TwitchTask dependantTask = null) : TwitchTask(info, dependantTask)
+    internal class VodDownloadTask(TwitchTask dependantTask = null) : TwitchTask(dependantTask)
     {
-        public VideoDownloadOptions DownloadOptions { get; } = downloadOptions;
+        public VideoDownloadOptions DownloadOptions { get; set; }
         public override string TaskType { get; } = Translations.Strings.VodDownload;
         public override string OutputFile => DownloadOptions.Filename;
 

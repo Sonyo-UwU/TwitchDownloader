@@ -327,7 +327,11 @@ namespace TwitchDownloaderWPF
                     taskData.Game) +
                 FilenameService.GuessVodFileExtension(downloadOptions.Quality));
 
-            var downloadTask = new VodDownloadTask(downloadOptions, taskData);
+            var downloadTask = new VodDownloadTask
+            {
+                DownloadOptions = downloadOptions,
+                Info = taskData
+            };
 
             lock (PageQueue.TaskLock)
             {
@@ -364,7 +368,11 @@ namespace TwitchDownloaderWPF
                 FileCollisionCallback = HandleFileCollisionCallback,
             };
 
-            var downloadTask = new ClipDownloadTask(downloadOptions, taskData);
+            var downloadTask = new ClipDownloadTask
+            {
+                DownloadOptions = downloadOptions,
+                Info = taskData
+            };
 
             lock (PageQueue.TaskLock)
             {
@@ -416,7 +424,11 @@ namespace TwitchDownloaderWPF
                     taskData.ClipperId) +
                 downloadOptions.FileExtension);
 
-            var downloadTask = new ChatDownloadTask(downloadOptions, taskData);
+            var downloadTask = new ChatDownloadTask
+            {
+                DownloadOptions = downloadOptions,
+                Info = taskData
+            };
 
             lock (PageQueue.TaskLock)
             {
@@ -472,7 +484,11 @@ namespace TwitchDownloaderWPF
                     taskData.ClipperId) +
                 updateOptions.FileExtension);
 
-            var updateTask = new ChatUpdateTask(updateOptions, taskData);
+            var updateTask = new ChatUpdateTask
+            {
+                UpdateOptions = updateOptions,
+                Info = taskData
+            };
 
             lock (PageQueue.TaskLock)
             {
@@ -519,7 +535,11 @@ namespace TwitchDownloaderWPF
                 renderOptions.EndOverride = (int)Math.Ceiling(trimEndTime.TotalSeconds);
             }
 
-            var renderTask = new ChatRenderTask(renderOptions, taskData, dependantTask);
+            var renderTask = new ChatRenderTask(dependantTask)
+            {
+                RenderOptions = renderOptions,
+                Info = taskData
+            };
 
             lock (PageQueue.TaskLock)
             {

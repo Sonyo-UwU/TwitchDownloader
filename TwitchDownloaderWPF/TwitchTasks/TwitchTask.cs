@@ -13,9 +13,8 @@ namespace TwitchDownloaderWPF.TwitchTasks
 {
     public abstract class TwitchTask : INotifyPropertyChanged
     {
-        public TwitchTask(TaskData info, TwitchTask dependantTask = null)
+        public TwitchTask(TwitchTask dependantTask = null)
         {
-            Info = info;
             DependantTask = dependantTask;
             Status = dependantTask is null ? TwitchTaskStatus.Ready : TwitchTaskStatus.Waiting;
             TokenSource = new();
@@ -29,7 +28,7 @@ namespace TwitchDownloaderWPF.TwitchTasks
         public event EventHandler<TaskTerminatedEventArgs> TaskTerminated;
 
         public TaskData Info { get; set; }
-        public TwitchTask DependantTask { get; set; }
+        public TwitchTask DependantTask { get; }
 
         public abstract string TaskType { get; }
         public abstract string OutputFile { get; }

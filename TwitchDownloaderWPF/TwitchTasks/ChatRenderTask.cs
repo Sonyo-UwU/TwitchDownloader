@@ -3,9 +3,9 @@ using TwitchDownloaderCore.Options;
 
 namespace TwitchDownloaderWPF.TwitchTasks
 {
-    internal class ChatRenderTask(ChatRenderOptions renderOptions, TaskData info, TwitchTask dependantTask = null) : TwitchTask(info, dependantTask)
+    internal class ChatRenderTask(TwitchTask dependantTask = null) : TwitchTask(dependantTask)
     {
-        public ChatRenderOptions RenderOptions { get; } = renderOptions;
+        public ChatRenderOptions RenderOptions { get; set; }
         public override string TaskType { get; } = Translations.Strings.ChatRender;
         public override string OutputFile => RenderOptions.OutputFile;
 

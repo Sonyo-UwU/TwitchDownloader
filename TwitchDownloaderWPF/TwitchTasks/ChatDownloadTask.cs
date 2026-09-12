@@ -3,9 +3,9 @@ using TwitchDownloaderCore.Options;
 
 namespace TwitchDownloaderWPF.TwitchTasks
 {
-    internal class ChatDownloadTask(ChatDownloadOptions downloadOptions, TaskData info, TwitchTask dependantTask = null) : TwitchTask(info, dependantTask)
+    internal class ChatDownloadTask(TwitchTask dependantTask = null) : TwitchTask(dependantTask)
     {
-        public ChatDownloadOptions DownloadOptions { get; } = downloadOptions;
+        public ChatDownloadOptions DownloadOptions { get; set; }
         public override string TaskType { get; } = Translations.Strings.ChatDownload;
         public override string OutputFile => DownloadOptions.Filename;
 
