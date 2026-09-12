@@ -33,7 +33,7 @@ namespace TwitchDownloaderCore.Tools
 
         public IEnumerable<PartState> AppendSegment(M3U8 playlist)
         {
-            uint? startId = playlist.FileMetadata.MediaSequence ?? playlist.FileMetadata.TwitchLiveSequence;
+            uint? startId = playlist.FileMetadata.TwitchLiveSequence ?? playlist.FileMetadata.MediaSequence;
             for (int i = 0; i < playlist.Streams.Length; i++)
             {
                 M3U8.Stream stream = playlist.Streams[i];
