@@ -107,7 +107,7 @@ namespace TwitchDownloaderCore
             var downloadThreads = new StreamDownloadThread[_downloadOptions.DownloadThreads];
             for (var i = 0; i < _downloadOptions.DownloadThreads; i++)
             {
-                downloadThreads[i] = new StreamDownloadThread(downloadState, _httpClient, _cacheDir, _downloadOptions.ThrottleKib, _progress, cancellationToken);
+                downloadThreads[i] = new StreamDownloadThread(downloadState, _httpClient, _cacheDir, _progress, cancellationToken);
             }
 
             var concatListPath = Path.Combine(_cacheDir, "concat.txt");
@@ -314,7 +314,7 @@ namespace TwitchDownloaderCore
             var uri = new Uri(map.Uri);
             _progress.LogVerbose($"Downloading header file from '{uri}' to '{destinationFile}'");
 
-            await DownloadTools.DownloadFileAsync(_httpClient, uri, destinationFile, null, _downloadOptions.ThrottleKib, _progress, CancellationTokenSource.CreateLinkedTokenSource(cancellationToken));
+            await DownloadTools.DownloadFileAsync(_httpClient, uri, destinationFile, null, -1, _progress, CancellationTokenSource.CreateLinkedTokenSource(cancellationToken));
 
             return destinationFile;
         }

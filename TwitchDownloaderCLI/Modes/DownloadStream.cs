@@ -4,7 +4,6 @@ using TwitchDownloaderCore;
 using TwitchDownloaderCore.Interfaces;
 using TwitchDownloaderCore.Options;
 using TwitchDownloaderCore.Services;
-using TwitchDownloaderCore.Tools;
 
 namespace TwitchDownloaderCLI.Modes
 {
@@ -40,7 +39,6 @@ namespace TwitchDownloaderCLI.Modes
             StreamDownloadOptions downloadOptions = new()
             {
                 DownloadThreads = inputOptions.DownloadThreads,
-                ThrottleKib = inputOptions.ThrottleKib,
                 ChannelLogin = inputOptions.ChannelLogin,
                 Oauth = inputOptions.Oauth,
                 Filename = inputOptions.OutputFile,
@@ -58,7 +56,7 @@ namespace TwitchDownloaderCLI.Modes
                         $"{directoryInfos.Length} unmanaged video caches were found at '{directoryInfos.FirstOrDefault()?.Parent?.FullName ?? inputOptions.TempFolder}' and can be safely deleted. " +
                         "Run 'TwitchDownloaderCLI cache help' for more information.");
 
-                    return Array.Empty<DirectoryInfo>();
+                    return [];
                 },
                 FileCollisionCallback = collisionHandler.HandleCollisionCallback,
             };

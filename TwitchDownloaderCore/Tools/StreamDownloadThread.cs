@@ -7,17 +7,15 @@ namespace TwitchDownloaderCore.Tools
         private readonly StreamDownloadState _downloadState;
         private readonly HttpClient _client;
         private readonly string _cacheFolder;
-        private readonly int _throttleKib;
         private readonly ITaskProgress _progress;
         private readonly CancellationToken _cancellationToken;
         public Task ThreadTask { get; private set; }
 
-        public StreamDownloadThread(StreamDownloadState downloadState, HttpClient httpClient, string cacheFolder, int throttleKib, ITaskProgress progress, CancellationToken cancellationToken)
+        public StreamDownloadThread(StreamDownloadState downloadState, HttpClient httpClient, string cacheFolder, ITaskProgress progress, CancellationToken cancellationToken)
         {
             _downloadState = downloadState;
             _client = httpClient;
             _cacheFolder = cacheFolder;
-            _throttleKib = throttleKib;
             _progress = progress;
             _cancellationToken = cancellationToken;
             StartDownload();
@@ -114,7 +112,7 @@ namespace TwitchDownloaderCore.Tools
 
                 // Download file
                 // Stream parts don't have a Content-Length header, so this always returns -1
-                await DownloadTools.DownloadFileAsync(_client, partUri, partFile, _downloadState.HeaderFile, _throttleKib, _progress, cancellationTokenSource);
+                await DownloadTools.DownloadFileAsync(_client, partUri, partFile, _downloadState.HeaderFile, -1, _progress, cancellationTokenSource);
 
                 // Check file size
                 partFi.Refresh();
