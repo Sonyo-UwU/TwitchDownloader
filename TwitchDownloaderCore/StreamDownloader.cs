@@ -93,7 +93,8 @@ namespace TwitchDownloaderCore
                     throw;
                 }
             }
-            // TODO: check available space and warn user if it is less than 24h
+            CheckAvailableStorageSpace(quality.Item.Bandwidth);
+
             // TODO: display how long the stream has been live for
             // TODO: option to download earlier parts from the VOD, either now or at end of stream download
 
@@ -204,6 +205,37 @@ namespace TwitchDownloaderCore
             }
 
             _progress.ReportProgress(100);
+        }
+
+        private void CheckAvailableStorageSpace(int bandwidth)
+        {
+            var bytesPerSecond = bandwidth / 8d;
+            var tempFolderDrive = DriveHelper.GetOutputDrive(_cacheDir);
+            var destinationDrive = DriveHelper.GetOutputDrive(_downloadOptions.Filename);
+            var tempFolderAvailableTime = TimeSpan.FromSeconds(tempFolderDrive.AvailableFreeSpace / bytesPerSecond);
+            var destinationAvailableTime = TimeSpan.FromSeconds(destinationDrive.AvailableFreeSpace / bytesPerSecond);
+
+            // Warn user if less than 12h available
+            if (tempFolderDrive.Name == destinationDrive.Name)
+            {
+                if (tempFolderAvailableTime < TimeSpan.FromHours(12 * 2))
+                {
+                    _progress.LogWarning($"The drive '{tempFolderDrive.Name}' only has space for about {tempFolderAvailableTime:h\\hmm\\m} of stream.");
+                }
+            }
+            else
+            {
+                if (tempFolderAvailableTime < TimeSpan.FromHours(12))
+                {
+                    // More drive space is needed by the raw ts files due to repeat metadata, but the amount of metadata packets can vary between files so we won't bother.
+                    _progress.LogWarning($"The drive '{tempFolderDrive.Name}' only has space for about {tempFolderAvailableTime:h\\hmm\\m} of stream.");
+                }
+
+                if (destinationAvailableTime < TimeSpan.FromHours(12))
+                {
+                    _progress.LogWarning($"The drive '{destinationDrive.Name}' only has space for about {destinationAvailableTime:h\\hmm\\m} of stream.");
+                }
+            }
         }
 
         private async Task<IVideoQuality<StreamQuality>> GetQuality(CancellationToken cancellationToken)
