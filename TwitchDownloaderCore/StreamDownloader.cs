@@ -95,7 +95,6 @@ namespace TwitchDownloaderCore
             }
             CheckAvailableStorageSpace(quality.Item.Bandwidth);
 
-            // TODO: display how long the stream has been live for
             // TODO: option to download earlier parts from the VOD, either now or at end of stream download
 
 
@@ -113,6 +112,7 @@ namespace TwitchDownloaderCore
             var concatListPath = Path.Combine(_cacheDir, "concat.txt");
             FfmpegConcatList.StreamIds streamIds = null;
 
+            var isFirstIteration = true;
             try
             {
                 using var timer = new PeriodicTimer(TimeSpan.FromSeconds(20));
@@ -121,6 +121,20 @@ namespace TwitchDownloaderCore
                     var playlist = await GetPlaylistAsync(quality, linkedCts.Token);
                     if (playlist is null)
                         break;
+
+                    if (isFirstIteration)
+                    {
+                        var totalTime = TimeSpan.FromSeconds((double)playlist.FileMetadata.TwitchTotalSeconds);
+                        var elapsedTime = TimeSpan.FromSeconds((double)playlist.FileMetadata.TwitchElapsedSeconds);
+                        if (elapsedTime > TimeSpan.Zero)
+                        {
+                            _progress.LogInfo($"Stream was live for {(int)totalTime.TotalHours}h{totalTime.Minutes:00}m{totalTime.Seconds:00}s. {(int)elapsedTime.TotalHours}h{elapsedTime.Minutes:00}m{elapsedTime.Seconds:00}s will be missing from stream download.");
+                        }
+                        else
+                        {
+                            _progress.LogInfo($"Stream was live for {(int)totalTime.TotalHours}h{totalTime.Minutes:00}m{totalTime.Seconds:00}s");
+                        }
+                    }
 
                     if (downloadState.HeaderFile is null && playlist.FileMetadata.Map?.Uri is not null)
                     {
@@ -142,6 +156,8 @@ namespace TwitchDownloaderCore
 
                     await using var fs = new FileStream(concatListPath, FileMode.Append, FileAccess.Write, FileShare.Read);
                     await FfmpegConcatList.SerializeAsync(fs, completedParts.Select(x => (x.FileName, (decimal)x.Duration.TotalSeconds)), streamIds, cancellationToken);
+
+                    isFirstIteration = false;
                 } while (await timer.WaitForNextTickAsync(linkedCts.Token));
             }
             catch (OperationCanceledException)
