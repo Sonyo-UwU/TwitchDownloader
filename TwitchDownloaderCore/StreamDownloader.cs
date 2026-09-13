@@ -267,7 +267,6 @@ namespace TwitchDownloaderCore
         private async Task<IVideoQuality<StreamQuality>> GetQuality(CancellationToken cancellationToken)
         {
             GqlStreamTokenResponse accessToken = await TwitchHelper.GetStreamToken(_downloadOptions.ChannelLogin, _downloadOptions.Oauth, cancellationToken);
-            // TODO: get token expiration date
 
             if (accessToken.data.streamPlaybackAccessToken is null)
             {

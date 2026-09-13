@@ -113,7 +113,8 @@ namespace TwitchDownloaderCore.Tools
                 }
             }
 
-            if (!ProcessedParts.IsEmpty && _expectedNextPart - _lastPartProcessed.ProgramDateTime > TimeSpan.FromSeconds(60))
+            // Parts are available for about 6 minutes, if a part is older than 7 minutes old, it's definitely lost
+            if (!ProcessedParts.IsEmpty && _expectedNextPart - _lastPartProcessed.ProgramDateTime > TimeSpan.FromMinutes(7))
             {
                 // There was some parts missing
                 var oldest = ProcessedParts.Values.MinBy(x => x.ProgramDateTime);
