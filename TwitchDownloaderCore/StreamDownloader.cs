@@ -103,10 +103,18 @@ namespace TwitchDownloaderCore
             var progressTemplateIncludesMissingTime = false;
 
             var downloadState = new StreamDownloadState(_progress);
+            var autoResetEvents = new AutoResetEvent[_downloadOptions.DownloadThreads];
             var downloadThreads = new StreamDownloadThread[_downloadOptions.DownloadThreads];
             for (var i = 0; i < _downloadOptions.DownloadThreads; i++)
             {
-                downloadThreads[i] = new StreamDownloadThread(downloadState, _httpClient, _cacheDir, _progress, cancellationToken);
+                autoResetEvents[i] = new(false);
+                downloadThreads[i] = new StreamDownloadThread(downloadState, _httpClient, autoResetEvents[i], _cacheDir, _progress, cancellationToken);
+            }
+
+            void setAllEvents()
+            {
+                foreach (var autoResetEvent in autoResetEvents)
+                    autoResetEvent.Set();
             }
 
             var concatListPath = Path.Combine(_cacheDir, "concat.txt");
@@ -143,6 +151,7 @@ namespace TwitchDownloaderCore
                     streamIds ??= GetStreamIds(playlist);
 
                     var completedParts = downloadState.AppendSegment(playlist);
+                    setAllEvents();
 
                     if (!progressTemplateIncludesMissingTime && downloadState.TotalMissingTime > TimeSpan.Zero)
                     {
@@ -180,6 +189,7 @@ namespace TwitchDownloaderCore
 
             cancellationToken.ThrowIfCancellationRequested();
             downloadState.StopDownload();
+            setAllEvents();
 
             // StoppingToken does nothing past this point
             linkedCts.Dispose();

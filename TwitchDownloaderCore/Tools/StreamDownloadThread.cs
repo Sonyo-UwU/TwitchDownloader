@@ -6,15 +6,17 @@ namespace TwitchDownloaderCore.Tools
     {
         private readonly StreamDownloadState _downloadState;
         private readonly HttpClient _client;
+        private readonly AutoResetEvent _autoResetEvent;
         private readonly string _cacheFolder;
         private readonly ITaskProgress _progress;
         private readonly CancellationToken _cancellationToken;
         public Task ThreadTask { get; private set; }
 
-        public StreamDownloadThread(StreamDownloadState downloadState, HttpClient httpClient, string cacheFolder, ITaskProgress progress, CancellationToken cancellationToken)
+        public StreamDownloadThread(StreamDownloadState downloadState, HttpClient httpClient, AutoResetEvent autoResetEvent, string cacheFolder, ITaskProgress progress, CancellationToken cancellationToken)
         {
             _downloadState = downloadState;
             _client = httpClient;
+            _autoResetEvent = autoResetEvent;
             _cacheFolder = cacheFolder;
             _progress = progress;
             _cancellationToken = cancellationToken;
@@ -39,12 +41,12 @@ namespace TwitchDownloaderCore.Tools
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(_cancellationToken);
 
-            while (_downloadState.DownloadInProgress || !_downloadState.PartQueue.IsEmpty)
+            while (true)
             {
-                _cancellationToken.ThrowIfCancellationRequested();
-
-                if (_downloadState.PartQueue.TryDequeue(out var videoPart))
+                while (_downloadState.PartQueue.TryDequeue(out var videoPart))
                 {
+                    _cancellationToken.ThrowIfCancellationRequested();
+
                     try
                     {
                         var result = DownloadStreamPartAsync(videoPart, cts).GetAwaiter().GetResult();
@@ -67,6 +69,9 @@ namespace TwitchDownloaderCore.Tools
                     }
                     catch (Exception ex)
                     {
+                        if (_cancellationToken.IsCancellationRequested)
+                            return;
+
                         // Deliberately do not re-enqueue the part on exceptions
                         _progress.LogWarning($"Part {videoPart.FileName} could not be downloaded and will be missing from the finalized video.");
                         _progress.LogVerbose($"Error while downloading {videoPart.FileName}: {ex.Message}");
@@ -81,10 +86,15 @@ namespace TwitchDownloaderCore.Tools
 
                         _progress.ReportProgress((int)_downloadState.TotalDownloadedTime.TotalHours, _downloadState.TotalDownloadedTime, _downloadState.TotalMissingTime);
                     }
+
+                    Thread.Sleep(Random.Shared.Next(100, 200));
                 }
 
-                // TODO: use mutexes to avoid busy-waiting
-                Thread.Sleep(Random.Shared.Next(100, 200));
+                if (!_downloadState.DownloadInProgress)
+                    break;
+
+                _autoResetEvent.Reset();
+                _autoResetEvent.WaitOne();
             }
         }
 
