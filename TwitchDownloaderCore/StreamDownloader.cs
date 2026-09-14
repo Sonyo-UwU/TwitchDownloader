@@ -75,31 +75,10 @@ namespace TwitchDownloaderCore
         {
             var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, cancellationToken);
 
-            _progress.SetStatus("Fetching Stream Info [1/3]");
-            IVideoQuality<StreamQuality> quality;
-            try
-            {
-                quality = await GetQuality(linkedCts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                if (stoppingToken.IsCancellationRequested)
-                {
-                    _progress.LogWarning("No stream parts downloaded");
-                    return;
-                }
-                else
-                {
-                    throw;
-                }
-            }
-            CheckAvailableStorageSpace(quality.Item.Bandwidth);
-
             // TODO: option to download earlier parts from the VOD, either now or at end of stream download
 
-
             // Hacky workaroud to display more than 23h
-            _progress.SetTemplateStatus("Downloading Stream ({0}h{1:m\\ms\\s} downloaded) [2/3]", 0, TimeSpan.Zero, TimeSpan.Zero);
+            _progress.SetTemplateStatus("Downloading Stream ({0}h{1:m\\ms\\s} downloaded) [1/2]", 0, TimeSpan.Zero, TimeSpan.Zero);
             var progressTemplateIncludesMissingTime = false;
 
             var downloadState = new StreamDownloadState(_progress);
@@ -111,85 +90,111 @@ namespace TwitchDownloaderCore
                 downloadThreads[i] = new StreamDownloadThread(downloadState, _httpClient, autoResetEvents[i], _cacheDir, _progress, cancellationToken);
             }
 
-            void setAllEvents()
-            {
-                foreach (var autoResetEvent in autoResetEvents)
-                    autoResetEvent.Set();
-            }
-
             var concatListPath = Path.Combine(_cacheDir, "concat.txt");
-            FfmpegConcatList.StreamIds streamIds = null;
 
             var isFirstIteration = true;
-            try
+            var retryCount = 0;
+            while (true)
             {
-                using var timer = new PeriodicTimer(TimeSpan.FromSeconds(20));
-                do
+                try
                 {
-                    var playlist = await GetPlaylistAsync(quality, linkedCts.Token);
-                    if (playlist is null)
-                        break;
+                    var quality = await GetQuality(linkedCts.Token);
 
                     if (isFirstIteration)
                     {
-                        var totalTime = TimeSpan.FromSeconds((double)playlist.FileMetadata.TwitchTotalSeconds);
-                        var elapsedTime = TimeSpan.FromSeconds((double)playlist.FileMetadata.TwitchElapsedSeconds);
-                        if (elapsedTime > TimeSpan.Zero)
-                        {
-                            _progress.LogInfo($"Stream was live for {(int)totalTime.TotalHours}h{totalTime.Minutes:00}m{totalTime.Seconds:00}s. {(int)elapsedTime.TotalHours}h{elapsedTime.Minutes:00}m{elapsedTime.Seconds:00}s will be missing from stream download.");
-                        }
-                        else
-                        {
-                            _progress.LogInfo($"Stream was live for {(int)totalTime.TotalHours}h{totalTime.Minutes:00}m{totalTime.Seconds:00}s");
-                        }
+                        CheckAvailableStorageSpace(quality.Item.Bandwidth);
                     }
 
-                    if (downloadState.HeaderFile is null && playlist.FileMetadata.Map?.Uri is not null)
+                    using var timer = new PeriodicTimer(TimeSpan.FromSeconds(20));
+                    do
                     {
-                        downloadState.HeaderFile = await GetHeaderFile(playlist, cancellationToken);
-                    }
-                    streamIds ??= GetStreamIds(playlist);
+                        var playlist = await GetPlaylistAsync(quality, linkedCts.Token);
+                        if (playlist is null)
+                            break;
 
-                    var completedParts = downloadState.AppendSegment(playlist);
-                    setAllEvents();
+                        if (isFirstIteration)
+                        {
+                            var totalTime = TimeSpan.FromSeconds((double)playlist.FileMetadata.TwitchTotalSeconds);
+                            var elapsedTime = TimeSpan.FromSeconds((double)playlist.FileMetadata.TwitchElapsedSeconds);
+                            if (elapsedTime > TimeSpan.Zero)
+                            {
+                                _progress.LogInfo($"Stream was live for {(int)totalTime.TotalHours}h{totalTime.Minutes:00}m{totalTime.Seconds:00}s. {(int)elapsedTime.TotalHours}h{elapsedTime.Minutes:00}m{elapsedTime.Seconds:00}s will be missing from stream download.");
+                            }
+                            else
+                            {
+                                _progress.LogInfo($"Stream was live for {(int)totalTime.TotalHours}h{totalTime.Minutes:00}m{totalTime.Seconds:00}s");
+                            }
+                            isFirstIteration = false;
+                        }
 
-                    if (!progressTemplateIncludesMissingTime && downloadState.TotalMissingTime > TimeSpan.Zero)
-                    {
-                        _progress.SetTemplateStatus(
-                            "Downloading Stream ({0}h{1:m\\ms\\s} downloaded, {2:h\\hm\\ms\\s} missing) [2/3]",
-                            (int)downloadState.TotalDownloadedTime.TotalHours,
-                            downloadState.TotalDownloadedTime,
-                            downloadState.TotalMissingTime);
-                        progressTemplateIncludesMissingTime = true;
-                    }
+                        if (downloadState.HeaderFile is null && playlist.FileMetadata.Map?.Uri is not null)
+                        {
+                            downloadState.HeaderFile = await GetHeaderFile(playlist, cancellationToken);
+                        }
 
-                    await using var fs = new FileStream(concatListPath, FileMode.Append, FileAccess.Write, FileShare.Read);
-                    await FfmpegConcatList.SerializeAsync(fs, completedParts.Select(x => (x.FileName, (decimal)x.Duration.TotalSeconds)), streamIds, cancellationToken);
+                        var completedParts = downloadState.AppendSegment(playlist);
+                        foreach (var autoResetEvent in autoResetEvents)
+                            autoResetEvent.Set();
 
-                    isFirstIteration = false;
-                } while (await timer.WaitForNextTickAsync(linkedCts.Token));
-            }
-            catch (OperationCanceledException)
-            {
-                if (stoppingToken.IsCancellationRequested)
-                {
-                    _progress.LogInfo("Stopping stream download");
+                        if (!progressTemplateIncludesMissingTime && downloadState.TotalMissingTime > TimeSpan.Zero)
+                        {
+                            _progress.SetTemplateStatus(
+                                "Downloading Stream ({0}h{1:m\\ms\\s} downloaded, {2:h\\hm\\ms\\s} missing) [2/3]",
+                                (int)downloadState.TotalDownloadedTime.TotalHours,
+                                downloadState.TotalDownloadedTime,
+                                downloadState.TotalMissingTime);
+                            progressTemplateIncludesMissingTime = true;
+                        }
+
+                        await using var fs = new FileStream(concatListPath, FileMode.Append, FileAccess.Write, FileShare.Read);
+                        await FfmpegConcatList.SerializeAsync(fs, completedParts.Select(x => (x.FileName, (decimal)x.Duration.TotalSeconds, GetStreamIds(x.Path))), cancellationToken);
+                    } while (await timer.WaitForNextTickAsync(linkedCts.Token));
                 }
-                else
+                catch (OperationCanceledException)
                 {
-                    throw;
+                    if (stoppingToken.IsCancellationRequested)
+                    {
+                        _progress.LogInfo("Stopping stream download");
+                        break;
+                    }
+                    else
+                    {
+                        throw;
+                    }
+                }
+
+                // End of live stream, retry repeatedly for a minute in case stream crashed
+                _progress.LogVerbose("Stream playlist not found, retrying in 5s...");
+                if (++retryCount > 12)
+                    break;
+
+                try
+                {
+                    await Task.Delay(5000, linkedCts.Token);
+                }
+                catch
+                {
+                    if (stoppingToken.IsCancellationRequested)
+                    {
+                        _progress.LogInfo("Stopping stream download");
+                        break;
+                    }
+                    else
+                    {
+                        throw;
+                    }
                 }
             }
 
             if (!linkedCts.IsCancellationRequested)
             {
-                // TODO: wait a minute or two before finalizing in case the stream crashed. If channel goes back live, resume the download
                 _progress.LogInfo("End of live stream");
             }
 
             cancellationToken.ThrowIfCancellationRequested();
             downloadState.StopDownload();
-            setAllEvents();
+            foreach (var autoResetEvent in autoResetEvents)
+                autoResetEvent.Set();
 
             // StoppingToken does nothing past this point
             linkedCts.Dispose();
@@ -200,12 +205,18 @@ namespace TwitchDownloaderCore
 
             var lastParts = downloadState.GetLastParts();
             await using var concatFs = new FileStream(concatListPath, FileMode.Append, FileAccess.Write, FileShare.Read);
-            await FfmpegConcatList.SerializeAsync(concatFs, lastParts.Select(x => (x.FileName, (decimal)x.Duration.TotalSeconds)), streamIds, cancellationToken);
+            await FfmpegConcatList.SerializeAsync(concatFs, lastParts.Select(x => (x.FileName, (decimal)x.Duration.TotalSeconds, GetStreamIds(x.Path))), cancellationToken);
+
+            if (downloadState.TotalDownloadedTime <= TimeSpan.Zero)
+            {
+                _progress.LogWarning("No stream parts downloaded");
+                return;
+            }
 
             // TODO: option to download missing parts from VOD
 
 
-            _progress.SetTemplateStatus("Finalizing Video {0}% [3/3]", 0);
+            _progress.SetTemplateStatus("Finalizing Video {0}% [2/2]", 0);
             // TODO: try to get vod info if it exists (or fallback to channel info) to serialize metadata
 
             outputFs.Close();
@@ -344,9 +355,8 @@ namespace TwitchDownloaderCore
             return destinationFile;
         }
 
-        private FfmpegConcatList.StreamIds GetStreamIds(M3U8 playlist)
+        private FfmpegConcatList.StreamIds GetStreamIds(string path)
         {
-            var path = playlist.Streams.FirstOrDefault()?.Path ?? "";
             var extension = DownloadTools.GetStreamPartFileExtension(path);
             switch (extension)
             {

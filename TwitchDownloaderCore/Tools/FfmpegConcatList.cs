@@ -7,13 +7,13 @@ namespace TwitchDownloaderCore.Tools
     {
         private const string LINE_FEED = "\u000A";
 
-        public static async Task SerializeAsync(Stream fs, IEnumerable<(string filePath, decimal duration)> playlist, StreamIds streamIds, CancellationToken cancellationToken = default)
+        public static async Task SerializeAsync(Stream fs, IEnumerable<(string filePath, decimal duration, StreamIds streamIds)> playlist, CancellationToken cancellationToken = default)
         {
             await using var sw = new StreamWriter(fs) { NewLine = LINE_FEED };
 
             await sw.WriteLineAsync("ffconcat version 1.0");
 
-            foreach (var (filePath, duration) in playlist)
+            foreach (var (filePath, duration, streamIds) in playlist)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 

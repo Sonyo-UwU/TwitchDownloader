@@ -84,6 +84,11 @@ namespace TwitchDownloaderCore.Tools
 
         public IEnumerable<PartState> GetLastParts()
         {
+            if (_lastPartProcessed is null && ProcessedParts.IsEmpty)
+            {
+                return [];
+            }
+
             _expectedNextPart = DateTimeOffset.MaxValue;
             return GetCorrectedPartStates().Concat([_lastPartProcessed]);
         }

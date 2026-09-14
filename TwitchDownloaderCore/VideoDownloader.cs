@@ -131,7 +131,7 @@ namespace TwitchDownloaderCore
                 }
 
                 await using var fs = new FileStream(concatListPath, FileMode.Create, FileAccess.Write, FileShare.Read);
-                await FfmpegConcatList.SerializeAsync(fs, validParts.Select(x => (DownloadTools.RemoveQueryString(x.Path), x.PartInfo.Duration)), streamIds, cancellationToken);
+                await FfmpegConcatList.SerializeAsync(fs, validParts.Select(x => (DownloadTools.RemoveQueryString(x.Path), x.PartInfo.Duration, streamIds)), cancellationToken);
 
                 outputFs.Close();
 
