@@ -116,13 +116,21 @@ namespace TwitchDownloaderCore
 
             var concatListPath = Path.Combine(_cacheDir, "concat.txt");
 
+            PlaybackAccessToken accessToken = null;
+            DateTime accessTokenExpirationTime = DateTime.MinValue;
+
             var isFirstIteration = true;
             var retryCount = 0;
             while (true)
             {
                 try
                 {
-                    var quality = await GetQuality(linkedCts.Token);
+                    if (DateTime.Now - accessTokenExpirationTime > TimeSpan.Zero)
+                    {
+                        (accessToken, accessTokenExpirationTime) = await GetAccessToken(cancellationToken);
+                    }
+
+                    var quality = await GetQuality(accessToken, linkedCts.Token);
 
                     if (isFirstIteration)
                     {
@@ -178,6 +186,7 @@ namespace TwitchDownloaderCore
                             await FfmpegConcatList.SerializeAsync(fs, completedParts.Select(x => (x.FileName, (decimal)x.Duration.TotalSeconds, GetStreamIds(x.Path))), cancellationToken);
 
                             isFirstIteration = false;
+                            retryCount = 0;
                         } while (await timer.WaitForNextTickAsync(linkedCts.Token));
                     }
 
@@ -349,19 +358,31 @@ namespace TwitchDownloaderCore
             }
         }
 
-        private async Task<IVideoQuality<StreamQuality>> GetQuality(CancellationToken cancellationToken)
+        [GeneratedRegex(@"(?<=expires:"")([0-9]+)")]
+        private static partial Regex TokenExpirationTimeRegex { get; }
+
+        private async Task<(PlaybackAccessToken accessToken, DateTime expirationTime)> GetAccessToken(CancellationToken cancellationToken)
         {
-            GqlStreamTokenResponse accessToken = await TwitchHelper.GetStreamToken(_downloadOptions.ChannelLogin, _downloadOptions.Oauth, cancellationToken);
+            GqlStreamTokenResponse accessTokenResponse = await TwitchHelper.GetStreamToken(_downloadOptions.ChannelLogin, _downloadOptions.Oauth, cancellationToken);
+            var token = accessTokenResponse.data.streamPlaybackAccessToken ?? throw new NullReferenceException("Invalid stream");
 
-            if (accessToken.data.streamPlaybackAccessToken is null)
+            var match = TokenExpirationTimeRegex.Match(token.value);
+            if (!match.Success)
             {
-                throw new NullReferenceException("Invalid stream");
+                // Assume 20 minutes
+                return (token, DateTime.Now.AddMinutes(20));
             }
+            var epochTime = long.Parse(match.Groups[1].Value);
 
+            return (token, DateTime.UnixEpoch.AddSeconds(epochTime));
+        }
+
+        private async Task<IVideoQuality<StreamQuality>> GetQuality(PlaybackAccessToken accessToken, CancellationToken cancellationToken)
+        {
             var playlistString = await TwitchHelper.GetStreamPlaylist(
                 _downloadOptions.ChannelLogin,
-                accessToken.data.streamPlaybackAccessToken.value,
-                accessToken.data.streamPlaybackAccessToken.signature,
+                accessToken.value,
+                accessToken.signature,
                 cancellationToken);
             if (playlistString.Contains("Can not find channel"))
             {
