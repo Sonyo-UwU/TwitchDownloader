@@ -9,6 +9,7 @@
         public string Oauth { get; set; }
         public string FfmpegPath { get; set; }
         public string TempFolder { get; set; }
+        public bool DelayDownload { get; set; }
         public Func<DirectoryInfo[], DirectoryInfo[]> CacheCleanerCallback { get; set; }
         public Func<FileInfo, FileInfo> FileCollisionCallback { get; set; } = info => info;
     }

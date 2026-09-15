@@ -18,7 +18,10 @@ namespace TwitchDownloaderCLI.Modes.Arguments
         [Option('t', "threads", Default = 4, HelpText = "Number of parallel download threads. Large values may result in IP rate limiting.")]
         public int DownloadThreads { get; set; }
 
-        [Option("oauth", HelpText = "OAuth access token to download subscriber only streams or access logged-in only video qualities. DO NOT SHARE THIS WITH ANYONE.")]
+        [Option('d', "delay-download", HelpText = "Wait until the channel goes live.")]
+        public bool DelayDownload { get; set; }
+
+        [Option("oauth", HelpText = "OAuth access token to download subscriber only streams or access higher video qualities. DO NOT SHARE THIS WITH ANYONE.")]
         public string Oauth { get; set; }
 
         [Option("ffmpeg-path", HelpText = "Path to FFmpeg executable.")]

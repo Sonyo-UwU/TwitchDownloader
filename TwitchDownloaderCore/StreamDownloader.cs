@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Net.WebSockets;
 using System.Text.RegularExpressions;
 using TwitchDownloaderCore.Interfaces;
 using TwitchDownloaderCore.Models;
@@ -8,6 +9,7 @@ using TwitchDownloaderCore.Options;
 using TwitchDownloaderCore.Services;
 using TwitchDownloaderCore.Tools;
 using TwitchDownloaderCore.TwitchObjects.Gql;
+using TwitchDownloaderCore.TwitchObjects.WebSocket;
 
 namespace TwitchDownloaderCore
 {
@@ -75,6 +77,28 @@ namespace TwitchDownloaderCore
         {
             var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, cancellationToken);
 
+            if (_downloadOptions.DelayDownload)
+            {
+                _progress.SetStatus($"Waiting for {_downloadOptions.ChannelLogin} to go live... [0/2]");
+
+                try
+                {
+                    await WaitForStreamOnline(linkedCts.Token);
+
+                }
+                catch (OperationCanceledException)
+                {
+                    if (stoppingToken.IsCancellationRequested)
+                    {
+                        return;
+                    }
+                    else
+                    {
+                        throw;
+                    }
+                }
+            }
+
             // TODO: option to download earlier parts from the VOD, either now or at end of stream download
 
             // Hacky workaroud to display more than 23h
@@ -102,53 +126,66 @@ namespace TwitchDownloaderCore
 
                     if (isFirstIteration)
                     {
+                        if (quality is null)
+                            throw new Exception("Channel does not exist or is not live");
+
                         CheckAvailableStorageSpace(quality.Item.Bandwidth);
                     }
 
-                    using var timer = new PeriodicTimer(TimeSpan.FromSeconds(20));
-                    do
+                    if (quality is not null)
                     {
-                        var playlist = await GetPlaylistAsync(quality, linkedCts.Token);
-                        if (playlist is null)
-                            break;
-
-                        if (isFirstIteration)
+                        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(20));
+                        do
                         {
-                            var totalTime = TimeSpan.FromSeconds((double)playlist.FileMetadata.TwitchTotalSeconds);
-                            var elapsedTime = TimeSpan.FromSeconds((double)playlist.FileMetadata.TwitchElapsedSeconds);
-                            if (elapsedTime > TimeSpan.Zero)
+                            var playlist = await GetPlaylistAsync(quality, linkedCts.Token);
+                            if (playlist is null)
+                                break;
+
+                            if (isFirstIteration)
                             {
-                                _progress.LogInfo($"Stream was live for {(int)totalTime.TotalHours}h{totalTime.Minutes:00}m{totalTime.Seconds:00}s. {(int)elapsedTime.TotalHours}h{elapsedTime.Minutes:00}m{elapsedTime.Seconds:00}s will be missing from stream download.");
+                                var totalTime = TimeSpan.FromSeconds((double)playlist.FileMetadata.TwitchTotalSeconds);
+                                var elapsedTime = TimeSpan.FromSeconds((double)playlist.FileMetadata.TwitchElapsedSeconds);
+                                if (elapsedTime > TimeSpan.Zero)
+                                {
+                                    _progress.LogInfo($"Stream was live for {(int)totalTime.TotalHours}h{totalTime.Minutes:00}m{totalTime.Seconds:00}s. {(int)elapsedTime.TotalHours}h{elapsedTime.Minutes:00}m{elapsedTime.Seconds:00}s will be missing from stream download.");
+                                }
+                                else
+                                {
+                                    _progress.LogInfo($"Stream was live for {(int)totalTime.TotalHours}h{totalTime.Minutes:00}m{totalTime.Seconds:00}s");
+                                }
                             }
-                            else
+
+                            if (downloadState.HeaderFile is null && playlist.FileMetadata.Map?.Uri is not null)
                             {
-                                _progress.LogInfo($"Stream was live for {(int)totalTime.TotalHours}h{totalTime.Minutes:00}m{totalTime.Seconds:00}s");
+                                downloadState.HeaderFile = await GetHeaderFile(playlist, cancellationToken);
                             }
+
+                            var completedParts = downloadState.AppendSegment(playlist);
+                            foreach (var autoResetEvent in autoResetEvents)
+                                autoResetEvent.Set();
+
+                            if (!progressTemplateIncludesMissingTime && downloadState.TotalMissingTime > TimeSpan.Zero)
+                            {
+                                _progress.SetTemplateStatus(
+                                    "Downloading Stream ({0}h{1:m\\ms\\s} downloaded, {2:h\\hm\\ms\\s} missing) [2/3]",
+                                    (int)downloadState.TotalDownloadedTime.TotalHours,
+                                    downloadState.TotalDownloadedTime,
+                                    downloadState.TotalMissingTime);
+                                progressTemplateIncludesMissingTime = true;
+                            }
+
+                            await using var fs = new FileStream(concatListPath, FileMode.Append, FileAccess.Write, FileShare.Read);
+                            await FfmpegConcatList.SerializeAsync(fs, completedParts.Select(x => (x.FileName, (decimal)x.Duration.TotalSeconds, GetStreamIds(x.Path))), cancellationToken);
+
                             isFirstIteration = false;
-                        }
+                        } while (await timer.WaitForNextTickAsync(linkedCts.Token));
+                    }
 
-                        if (downloadState.HeaderFile is null && playlist.FileMetadata.Map?.Uri is not null)
-                        {
-                            downloadState.HeaderFile = await GetHeaderFile(playlist, cancellationToken);
-                        }
-
-                        var completedParts = downloadState.AppendSegment(playlist);
-                        foreach (var autoResetEvent in autoResetEvents)
-                            autoResetEvent.Set();
-
-                        if (!progressTemplateIncludesMissingTime && downloadState.TotalMissingTime > TimeSpan.Zero)
-                        {
-                            _progress.SetTemplateStatus(
-                                "Downloading Stream ({0}h{1:m\\ms\\s} downloaded, {2:h\\hm\\ms\\s} missing) [2/3]",
-                                (int)downloadState.TotalDownloadedTime.TotalHours,
-                                downloadState.TotalDownloadedTime,
-                                downloadState.TotalMissingTime);
-                            progressTemplateIncludesMissingTime = true;
-                        }
-
-                        await using var fs = new FileStream(concatListPath, FileMode.Append, FileAccess.Write, FileShare.Read);
-                        await FfmpegConcatList.SerializeAsync(fs, completedParts.Select(x => (x.FileName, (decimal)x.Duration.TotalSeconds, GetStreamIds(x.Path))), cancellationToken);
-                    } while (await timer.WaitForNextTickAsync(linkedCts.Token));
+                    // End of live stream, retry repeatedly for a minute in case stream crashed
+                    _progress.LogVerbose("Stream playlist not found, retrying in 5s...");
+                    if (++retryCount > 12)
+                        break;
+                    await Task.Delay(5000, linkedCts.Token);
                 }
                 catch (OperationCanceledException)
                 {
@@ -163,27 +200,7 @@ namespace TwitchDownloaderCore
                     }
                 }
 
-                // End of live stream, retry repeatedly for a minute in case stream crashed
-                _progress.LogVerbose("Stream playlist not found, retrying in 5s...");
-                if (++retryCount > 12)
-                    break;
-
-                try
-                {
-                    await Task.Delay(5000, linkedCts.Token);
-                }
-                catch
-                {
-                    if (stoppingToken.IsCancellationRequested)
-                    {
-                        _progress.LogInfo("Stopping stream download");
-                        break;
-                    }
-                    else
-                    {
-                        throw;
-                    }
-                }
+                isFirstIteration = false;
             }
 
             if (!linkedCts.IsCancellationRequested)
@@ -244,6 +261,63 @@ namespace TwitchDownloaderCore
             _progress.ReportProgress(100);
         }
 
+        private async Task WaitForStreamOnline(CancellationToken cancellationToken)
+        {
+            if (!string.IsNullOrWhiteSpace(_downloadOptions.Oauth))
+            {
+                await WaitForStreamOnlineWS(cancellationToken);
+            }
+            else
+            {
+                await WaitForStreamOnlineHttp(cancellationToken);
+            }
+        }
+
+        private async Task WaitForStreamOnlineHttp(CancellationToken cancellationToken)
+        {
+            GqlStreamCreatedAtResponse streamCreatedAt;
+            while (true)
+            {
+                streamCreatedAt = await TwitchHelper.GetStreamCreationTime(_downloadOptions.ChannelLogin, cancellationToken);
+
+                if (streamCreatedAt.data.user is null)
+                {
+                    throw new Exception("Channel does not exist");
+                }
+
+                if (streamCreatedAt.data.user.stream is not null)
+                {
+                    break;
+                }
+
+                await Task.Delay(Random.Shared.Next(10000, 15000), cancellationToken);
+            }
+
+            // Wait for at least 15 seconds of stream time
+            await Task.Delay(TimeSpan.FromSeconds(15) - (DateTime.Now - DateTime.Parse(streamCreatedAt.data.user.stream.createdAt)), cancellationToken);
+        }
+
+        private async Task WaitForStreamOnlineWS(CancellationToken cancellationToken)
+        {
+            var userId = (await TwitchHelper.GetUserIds([_downloadOptions.ChannelLogin])).data.users[0].id;
+
+            var twitchSocket = await TwitchHelper.CreateTwitchWebSocket(cancellationToken);
+
+            await TwitchHelper.SubscribeToWebSocketEventSub(twitchSocket, "stream.online", 1, $"{{\"broadcaster_user_id\":\"{userId}\"}}", _downloadOptions.Oauth, cancellationToken);
+
+            while (true)
+            {
+                var message = await TwitchHelper.ReceiveWebSocketTwitchMessage(twitchSocket, cancellationToken);
+                switch (message.metadata.message_type)
+                {
+                    case WSMessageMetadata.MessageType.notification:
+                        await twitchSocket.Socket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, cancellationToken);
+                        return;
+                }
+            }
+        }
+
+        
         private void CheckAvailableStorageSpace(int bandwidth)
         {
             var bytesPerSecond = bandwidth / 8d;
@@ -291,7 +365,7 @@ namespace TwitchDownloaderCore
                 cancellationToken);
             if (playlistString.Contains("Can not find channel"))
             {
-                throw new Exception("Channel does not exist or is not live");
+                return null;
             }
 
             var m3u8 = M3U8.Parse(playlistString);

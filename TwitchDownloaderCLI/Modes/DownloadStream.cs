@@ -1,4 +1,5 @@
-﻿using TwitchDownloaderCLI.Modes.Arguments;
+﻿using System.Diagnostics;
+using TwitchDownloaderCLI.Modes.Arguments;
 using TwitchDownloaderCLI.Tools;
 using TwitchDownloaderCore;
 using TwitchDownloaderCore.Interfaces;
@@ -18,9 +19,25 @@ namespace TwitchDownloaderCLI.Modes
             var collisionHandler = new FileCollisionHandler(inputOptions, progress);
             var downloadOptions = GetDownloadOptions(inputOptions, collisionHandler, progress);
 
+            var cts = new CancellationTokenSource();
+
+            void Console_CancelKeyPress(object sender, ConsoleCancelEventArgs e)
+            {
+                if (cts.IsCancellationRequested)
+                {
+                    // https://stackoverflow.com/questions/60098078/why-does-adding-a-console-cancelkeypress-handler-block-debugger-ctrlc-exit-when
+                    if (Debugger.IsAttached)
+                        Environment.Exit(1);
+                }
+
+                e.Cancel = true;
+                cts.Cancel();
+            }
+
+            Console.CancelKeyPress += Console_CancelKeyPress;
+
             var streamDownloader = new StreamDownloader(downloadOptions, progress);
-            //TODO: catch ^C signal and stop download.
-            streamDownloader.DownloadAsync(CancellationToken.None, CancellationToken.None).Wait();
+            streamDownloader.DownloadAsync(cts.Token, CancellationToken.None).Wait();
         }
 
         private static StreamDownloadOptions GetDownloadOptions(StreamDownloadArgs inputOptions, FileCollisionHandler collisionHandler, ITaskLogger logger)
@@ -50,6 +67,7 @@ namespace TwitchDownloaderCLI.Modes
                 },
                 FfmpegPath = string.IsNullOrWhiteSpace(inputOptions.FfmpegPath) ? FfmpegHandler.FfmpegExecutableName : Path.GetFullPath(inputOptions.FfmpegPath),
                 TempFolder = inputOptions.TempFolder,
+                DelayDownload = inputOptions.DelayDownload,
                 CacheCleanerCallback = directoryInfos =>
                 {
                     logger.LogInfo(
