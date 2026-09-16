@@ -54,6 +54,20 @@ namespace TwitchDownloaderCore
             return await response.Content.ReadFromJsonAsync<GqlVideoResponse>();
         }
 
+        public static async Task<GqlStreamResponse> GetStreamInfo(string channelLogin, CancellationToken cancellationToken)
+        {
+            var request = new HttpRequestMessage()
+            {
+                RequestUri = new Uri("https://gql.twitch.tv/gql"),
+                Method = HttpMethod.Post,
+                Content = new StringContent("{\"query\":\"query{user(login:\\\"" + channelLogin + "\\\"){stream{broadcaster{displayName,login},id,title,createdAt,game{displayName}}}}\",\"variables\":{}}", Encoding.UTF8, "application/json")
+            };
+            request.Headers.Add("Client-ID", "kimne78kx3ncx6brgo4mv6wki5h1ko");
+            using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<GqlStreamResponse>(cancellationToken);
+        }
+
         public static async Task<GqlVideoTokenResponse> GetVideoToken(long videoId, string authToken)
         {
             var request = new HttpRequestMessage()

@@ -105,6 +105,8 @@ namespace TwitchDownloaderCore
             _progress.SetTemplateStatus("Downloading Stream ({0}h{1:m\\ms\\s} downloaded) [1/2]", 0, TimeSpan.Zero, TimeSpan.Zero);
             var progressTemplateIncludesMissingTime = false;
 
+            var firstStreamInfo = (await TwitchHelper.GetStreamInfo(_downloadOptions.ChannelLogin, cancellationToken)).data.user?.stream;
+
             var downloadState = new StreamDownloadState(_progress);
             var autoResetEvents = new AutoResetEvent[_downloadOptions.DownloadThreads];
             var downloadThreads = new StreamDownloadThread[_downloadOptions.DownloadThreads];
@@ -244,7 +246,10 @@ namespace TwitchDownloaderCore
 
 
             _progress.SetTemplateStatus("Finalizing Video {0}% [2/2]", 0);
-            // TODO: try to get vod info if it exists (or fallback to channel info) to serialize metadata
+
+            string metadataPath = Path.Combine(_cacheDir, "metadata.txt");
+            await FfmpegMetadata.SerializeAsync(metadataPath, firstStreamInfo);
+            // TODO: get chapters from VOD?
 
             outputFs.Close();
 
@@ -253,7 +258,7 @@ namespace TwitchDownloaderCore
             do
             {
                 // For some reason using the full concatListPath makes ffmpeg not use _cacheDir as working directory
-                ffmpegExitCode = await RunFfmpegVideoCopy(outputFileInfo, "concat.txt", downloadState.TotalDownloadedTime + downloadState.TotalMissingTime, ffmpegRetries > 0, cancellationToken);
+                ffmpegExitCode = await RunFfmpegVideoCopy(outputFileInfo, "concat.txt", metadataPath, downloadState.TotalDownloadedTime + downloadState.TotalMissingTime, ffmpegRetries > 0, cancellationToken);
                 if (ffmpegExitCode != 0)
                 {
                     _progress.LogError($"Failed to finalize video (code {ffmpegExitCode}), retrying in 5 seconds...");
@@ -327,7 +332,7 @@ namespace TwitchDownloaderCore
             }
         }
 
-        
+
         private void CheckAvailableStorageSpace(int bandwidth)
         {
             var bytesPerSecond = bandwidth / 8d;
@@ -474,7 +479,7 @@ namespace TwitchDownloaderCore
             }
         }
 
-        private async Task<int> RunFfmpegVideoCopy(FileInfo outputFile, string concatListPath, TimeSpan videoLength, bool disableAudioCopy, CancellationToken cancellationToken)
+        private async Task<int> RunFfmpegVideoCopy(FileInfo outputFile, string concatListPath, string metadataPath, TimeSpan videoLength, bool disableAudioCopy, CancellationToken cancellationToken)
         {
             using var process = new Process
             {
@@ -500,6 +505,8 @@ namespace TwitchDownloaderCore
                 "-f", "concat",
                 "-max_streams", $"{int.MaxValue}",
                 "-i", concatListPath,
+                "-i", metadataPath,
+                "-map_metadata", "1",
                 disableAudioCopy ? "-c:v" : "-c", "copy",
                 outputFile.FullName
             };
