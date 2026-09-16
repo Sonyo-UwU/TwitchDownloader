@@ -94,7 +94,6 @@ namespace TwitchDownloaderCLI.Modes
             while (true)
             {
                 streamResponse = await TwitchHelper.GetStreamInfo(channelLogin);
-                Console.WriteLine("fetched");
 
                 if (streamResponse.data.user is null)
                 {
