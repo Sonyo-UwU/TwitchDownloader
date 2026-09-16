@@ -70,6 +70,12 @@ namespace TwitchDownloaderCore.Models
             public uint? TwitchLiveSequence { get; init; }
             public decimal? TwitchElapsedSeconds { get; init; }
             public decimal? TwitchTotalSeconds { get; init; }
+            private List<KeyValuePair<string, string>> _twitchInfo;
+            public IReadOnlyList<KeyValuePair<string, string>> TwitchInfo
+            {
+                get => _twitchInfo ??= [];
+                set => _twitchInfo = [..value];
+            }
 
             // Other headers that we don't have dedicated properties for. Useful for debugging.
             private List<KeyValuePair<string, string>> _unparsedValues;
@@ -113,6 +119,16 @@ namespace TwitchDownloaderCore.Models
                     sb.Append(SESSION_DATA_KEY);
                     sb.AppendKeyQuoteValue("DATA-ID=\"", id, ",");
                     sb.AppendKeyQuoteValue("VALUE=\"", value, itemSeparator);
+                }
+
+                if (TwitchInfo.Count > 0)
+                {
+                    sb.Append(TWITCH_INFO_KEY);
+                    foreach (var (key, value) in TwitchInfo)
+                    {
+                        sb.AppendKeyQuoteValue($"{key}=\"", value, ",");
+                    }
+                    sb.Append(itemSeparator);
                 }
 
                 foreach (var (key, value) in UnparsedValues)

@@ -130,7 +130,8 @@ namespace TwitchDownloaderCore
                         (accessToken, accessTokenExpirationTime) = await GetAccessToken(cancellationToken);
                     }
 
-                    var quality = await GetQuality(accessToken, linkedCts.Token);
+                    var m3u8 = await GetM3U8(accessToken, linkedCts.Token);
+                    var quality = GetQuality(m3u8);
 
                     if (isFirstIteration)
                     {
@@ -168,7 +169,7 @@ namespace TwitchDownloaderCore
                                 downloadState.HeaderFile = await GetHeaderFile(playlist, cancellationToken);
                             }
 
-                            var completedParts = downloadState.AppendSegment(playlist);
+                            var completedParts = downloadState.AppendSegment(m3u8.FileMetadata.TwitchInfo.FirstOrDefault(x => x.Key == "BROADCAST-ID").Value, playlist);
                             foreach (var autoResetEvent in autoResetEvents)
                                 autoResetEvent.Set();
 
@@ -377,7 +378,7 @@ namespace TwitchDownloaderCore
             return (token, DateTime.UnixEpoch.AddSeconds(epochTime));
         }
 
-        private async Task<IVideoQuality<StreamQuality>> GetQuality(PlaybackAccessToken accessToken, CancellationToken cancellationToken)
+        private async Task<M3U8> GetM3U8(PlaybackAccessToken accessToken, CancellationToken cancellationToken)
         {
             var playlistString = await TwitchHelper.GetStreamPlaylist(
                 _downloadOptions.ChannelLogin,
@@ -390,6 +391,14 @@ namespace TwitchDownloaderCore
             }
 
             var m3u8 = M3U8.Parse(playlistString);
+            return m3u8;
+        }
+
+        private IVideoQuality<StreamQuality> GetQuality(M3U8 m3u8)
+        {
+            if (m3u8 is null)
+                return null;
+
             var (availableQualities, unavailableQualities) = VideoQualities.FromStreamM3U8(m3u8);
             var allQualities = new StreamVideoQualities([.. availableQualities.Qualities, .. unavailableQualities.Qualities]);
 

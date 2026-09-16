@@ -173,6 +173,7 @@ namespace TwitchDownloaderCore.Models
                 private uint? _twitchLiveSequence;
                 private decimal? _twitchElapsedSeconds;
                 private decimal? _twitchTotalSeconds;
+                private List<KeyValuePair<string, string>> _twitchInfo = [];
 
                 // Other headers that we don't have dedicated properties for. Useful for debugging.
                 private readonly List<KeyValuePair<string, string>> _unparsedValues = new();
@@ -264,7 +265,23 @@ namespace TwitchDownloaderCore.Models
                     }
                     else if (text.StartsWith(TWITCH_INFO_KEY))
                     {
-                        // Do nothing. This header includes response related info that we don't need.
+                        text = text[TWITCH_INFO_KEY.Length..];
+
+                        while (true)
+                        {
+                            text = text.TrimStart();
+
+                            var equalIndex = text.IndexOf('=');
+                            var key = text[..(equalIndex + 2)];
+                            var value = ParsingHelpers.ParseStringValue(text, key);
+                            _twitchInfo.Add(new(key[..^2].ToString(), value));
+
+                            var nextIndex = text.UnEscapedIndexOf(',');
+                            if (nextIndex == -1)
+                                break;
+
+                            text = text[(nextIndex + 1)..];
+                        }
                     }
                     else if (text[0] == '#')
                     {
@@ -295,6 +312,7 @@ namespace TwitchDownloaderCore.Models
                         TwitchLiveSequence = _twitchLiveSequence,
                         TwitchElapsedSeconds = _twitchElapsedSeconds,
                         TwitchTotalSeconds = _twitchTotalSeconds,
+                        TwitchInfo = _twitchInfo,
                         _unparsedValues = _unparsedValues
                     };
                 }

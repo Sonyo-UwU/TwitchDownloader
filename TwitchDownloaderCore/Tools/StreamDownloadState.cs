@@ -36,7 +36,7 @@ namespace TwitchDownloaderCore.Tools
 
         private PartState _lastPartProcessed;
 
-        public IEnumerable<PartState> AppendSegment(M3U8 playlist)
+        public IEnumerable<PartState> AppendSegment(string streamId, M3U8 playlist)
         {
             var firstStream = playlist.Streams[0];
             if (_expectedNextPart == default)
@@ -63,7 +63,7 @@ namespace TwitchDownloaderCore.Tools
                 if (stream.ProgramDateTime < _expectedNextPart)
                     continue;
 
-                var filename = startId is not null ? (startId + i).ToString() : stream.ProgramDateTime.ToString("yyyy-MM-ddTHH-mm-ss.fffffff");
+                var filename = startId is not null ? streamId + "-" + (startId + i).ToString() : stream.ProgramDateTime.ToString("yyyy-MM-ddTHH-mm-ss.fffffff");
                 PartQueue.Enqueue(new()
                 {
                     Path = stream.Path,
