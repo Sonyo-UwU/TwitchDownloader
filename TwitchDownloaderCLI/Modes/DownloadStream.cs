@@ -5,6 +5,7 @@ using TwitchDownloaderCore;
 using TwitchDownloaderCore.Interfaces;
 using TwitchDownloaderCore.Options;
 using TwitchDownloaderCore.Services;
+using TwitchDownloaderCore.TwitchObjects.Gql;
 
 namespace TwitchDownloaderCLI.Modes
 {
@@ -13,6 +14,12 @@ namespace TwitchDownloaderCLI.Modes
         internal static void Download(StreamDownloadArgs inputOptions)
         {
             using var progress = new CliTaskProgress(inputOptions.LogLevel);
+
+            if (inputOptions.DelayDownload)
+            {
+                progress.SetStatus($"Waiting for {inputOptions.ChannelLogin} to go live... [0/2]");
+                WaitForStreamOnline(inputOptions.ChannelLogin).Wait();
+            }
 
             FfmpegHandler.DetectFfmpeg(inputOptions.FfmpegPath, progress);
 
@@ -67,7 +74,6 @@ namespace TwitchDownloaderCLI.Modes
                 },
                 FfmpegPath = string.IsNullOrWhiteSpace(inputOptions.FfmpegPath) ? FfmpegHandler.FfmpegExecutableName : Path.GetFullPath(inputOptions.FfmpegPath),
                 TempFolder = inputOptions.TempFolder,
-                DelayDownload = inputOptions.DelayDownload,
                 CacheCleanerCallback = directoryInfos =>
                 {
                     logger.LogInfo(
@@ -80,6 +86,35 @@ namespace TwitchDownloaderCLI.Modes
             };
 
             return downloadOptions;
+        }
+
+        private static async Task WaitForStreamOnline(string channelLogin)
+        {
+            GqlStreamResponse streamResponse;
+            while (true)
+            {
+                streamResponse = await TwitchHelper.GetStreamInfo(channelLogin);
+                Console.WriteLine("fetched");
+
+                if (streamResponse.data.user is null)
+                {
+                    throw new Exception("Channel does not exist");
+                }
+
+                if (streamResponse.data.user.stream is not null)
+                {
+                    break;
+                }
+
+                await Task.Delay(Random.Shared.Next(10_000, 15_000));
+            }
+
+            // Wait for at least 15 seconds of stream time
+            var delay = TimeSpan.FromSeconds(15) - (DateTime.Now - streamResponse.data.user.stream.createdAt);
+            if (delay > TimeSpan.Zero)
+            {
+                await Task.Delay(delay);
+            }
         }
     }
 }

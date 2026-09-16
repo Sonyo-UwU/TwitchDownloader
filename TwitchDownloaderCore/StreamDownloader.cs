@@ -1,6 +1,5 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Net.WebSockets;
 using System.Text.RegularExpressions;
 using TwitchDownloaderCore.Interfaces;
 using TwitchDownloaderCore.Models;
@@ -9,7 +8,6 @@ using TwitchDownloaderCore.Options;
 using TwitchDownloaderCore.Services;
 using TwitchDownloaderCore.Tools;
 using TwitchDownloaderCore.TwitchObjects.Gql;
-using TwitchDownloaderCore.TwitchObjects.WebSocket;
 
 namespace TwitchDownloaderCore
 {
@@ -77,35 +75,13 @@ namespace TwitchDownloaderCore
         {
             var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, cancellationToken);
 
-            if (_downloadOptions.DelayDownload)
-            {
-                _progress.SetStatus($"Waiting for {_downloadOptions.ChannelLogin} to go live... [0/2]");
-
-                try
-                {
-                    await WaitForStreamOnline(linkedCts.Token);
-
-                }
-                catch (OperationCanceledException)
-                {
-                    if (stoppingToken.IsCancellationRequested)
-                    {
-                        return;
-                    }
-                    else
-                    {
-                        throw;
-                    }
-                }
-            }
-
             // TODO: option to download earlier parts from the VOD, either now or at end of stream download
 
             // Hacky workaroud to display more than 23h
             _progress.SetTemplateStatus("Downloading Stream ({0}h{1:m\\ms\\s} downloaded) [1/2]", 0, TimeSpan.Zero, TimeSpan.Zero);
             var progressTemplateIncludesMissingTime = false;
 
-            var firstStreamInfo = (await TwitchHelper.GetStreamInfo(_downloadOptions.ChannelLogin, cancellationToken)).data.user?.stream;
+            var firstStreamInfo = (await TwitchHelper.GetStreamInfo(_downloadOptions.ChannelLogin)).data.user?.stream;
 
             var downloadState = new StreamDownloadState(_progress);
             var autoResetEvents = new AutoResetEvent[_downloadOptions.DownloadThreads];
@@ -275,63 +251,6 @@ namespace TwitchDownloaderCore
 
             _progress.ReportProgress(100);
         }
-
-        private async Task WaitForStreamOnline(CancellationToken cancellationToken)
-        {
-            if (!string.IsNullOrWhiteSpace(_downloadOptions.Oauth))
-            {
-                await WaitForStreamOnlineWS(cancellationToken);
-            }
-            else
-            {
-                await WaitForStreamOnlineHttp(cancellationToken);
-            }
-        }
-
-        private async Task WaitForStreamOnlineHttp(CancellationToken cancellationToken)
-        {
-            GqlStreamCreatedAtResponse streamCreatedAt;
-            while (true)
-            {
-                streamCreatedAt = await TwitchHelper.GetStreamCreationTime(_downloadOptions.ChannelLogin, cancellationToken);
-
-                if (streamCreatedAt.data.user is null)
-                {
-                    throw new Exception("Channel does not exist");
-                }
-
-                if (streamCreatedAt.data.user.stream is not null)
-                {
-                    break;
-                }
-
-                await Task.Delay(Random.Shared.Next(10000, 15000), cancellationToken);
-            }
-
-            // Wait for at least 15 seconds of stream time
-            await Task.Delay(TimeSpan.FromSeconds(15) - (DateTime.Now - DateTime.Parse(streamCreatedAt.data.user.stream.createdAt)), cancellationToken);
-        }
-
-        private async Task WaitForStreamOnlineWS(CancellationToken cancellationToken)
-        {
-            var userId = (await TwitchHelper.GetUserIds([_downloadOptions.ChannelLogin])).data.users[0].id;
-
-            var twitchSocket = await TwitchHelper.CreateTwitchWebSocket(cancellationToken);
-
-            await TwitchHelper.SubscribeToWebSocketEventSub(twitchSocket, "stream.online", 1, $"{{\"broadcaster_user_id\":\"{userId}\"}}", _downloadOptions.Oauth, cancellationToken);
-
-            while (true)
-            {
-                var message = await TwitchHelper.ReceiveWebSocketTwitchMessage(twitchSocket, cancellationToken);
-                switch (message.metadata.message_type)
-                {
-                    case WSMessageMetadata.MessageType.notification:
-                        await twitchSocket.Socket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, cancellationToken);
-                        return;
-                }
-            }
-        }
-
 
         private void CheckAvailableStorageSpace(int bandwidth)
         {

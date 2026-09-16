@@ -3,7 +3,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Json;
-using System.Net.WebSockets;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security;
@@ -19,7 +18,6 @@ using TwitchDownloaderCore.Tools;
 using TwitchDownloaderCore.TwitchObjects;
 using TwitchDownloaderCore.TwitchObjects.Api;
 using TwitchDownloaderCore.TwitchObjects.Gql;
-using TwitchDownloaderCore.TwitchObjects.WebSocket;
 
 namespace TwitchDownloaderCore
 {
@@ -54,7 +52,7 @@ namespace TwitchDownloaderCore
             return await response.Content.ReadFromJsonAsync<GqlVideoResponse>();
         }
 
-        public static async Task<GqlStreamResponse> GetStreamInfo(string channelLogin, CancellationToken cancellationToken)
+        public static async Task<GqlStreamResponse> GetStreamInfo(string channelLogin)
         {
             var request = new HttpRequestMessage()
             {
@@ -63,9 +61,9 @@ namespace TwitchDownloaderCore
                 Content = new StringContent("{\"query\":\"query{user(login:\\\"" + channelLogin + "\\\"){stream{broadcaster{displayName,login},id,title,createdAt,game{displayName}}}}\",\"variables\":{}}", Encoding.UTF8, "application/json")
             };
             request.Headers.Add("Client-ID", "kimne78kx3ncx6brgo4mv6wki5h1ko");
-            using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
             response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<GqlStreamResponse>(cancellationToken);
+            return await response.Content.ReadFromJsonAsync<GqlStreamResponse>();
         }
 
         public static async Task<GqlVideoTokenResponse> GetVideoToken(long videoId, string authToken)
@@ -270,20 +268,6 @@ namespace TwitchDownloaderCore
             using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
             response.EnsureSuccessStatusCode();
             return await response.Content.ReadFromJsonAsync<GqlClipSearchResponse>();
-        }
-
-        public static async Task<GqlStreamCreatedAtResponse> GetStreamCreationTime(string channelName, CancellationToken cancellationToken)
-        {
-            var request = new HttpRequestMessage()
-            {
-                RequestUri = new Uri("https://gql.twitch.tv/gql"),
-                Method = HttpMethod.Post,
-                Content = new StringContent($"{{\"query\": \"query {{ user(login: \\\"{channelName}\\\") {{ stream {{ createdAt }} }} }}\"}}", Encoding.UTF8, "application/json")
-            };
-            request.Headers.Add("Client-ID", "kimne78kx3ncx6brgo4mv6wki5h1ko");
-            using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<GqlStreamCreatedAtResponse>(cancellationToken);
         }
 
         public static async Task<EmoteResponse> GetThirdPartyEmotesMetadata(int streamerId, bool getBttv, bool getFfz, bool getStv, bool allowUnlistedEmotes, string cacheFolder, bool offline, ITaskLogger logger,
@@ -1624,71 +1608,6 @@ namespace TwitchDownloaderCore
             }
 
             return desiredHeight;
-        }
-
-        public static async Task<TwitchWebSocket> CreateTwitchWebSocket(CancellationToken cancellationToken)
-        {
-            var twitchSocket = new TwitchWebSocket
-            {
-                Socket = new ClientWebSocket(),
-                Buffer = new byte[4096]
-            };
-            await twitchSocket.Socket.ConnectAsync(new Uri("wss://eventsub.wss.twitch.tv/ws"), cancellationToken);
-
-            var message = await ReceiveWebSocketTwitchMessage(twitchSocket, cancellationToken);
-            if (message.metadata.message_type != WSMessageMetadata.MessageType.session_welcome)
-            {
-                throw new Exception("Error creating WebSocket: no session_welcome message received.");
-            }
-
-            var messagePayload = message.payload.Deserialize<WSMessagePayloadWelcome>();
-            twitchSocket.SessionId = messagePayload.session.id;
-
-            return twitchSocket;
-        }
-
-        public static async Task<WSMessage> ReceiveWebSocketTwitchMessage(TwitchWebSocket twitchSocket, CancellationToken cancellationToken)
-        {
-            ArraySegment<byte> bufferSegment = new(twitchSocket.Buffer);
-            var result = await twitchSocket.Socket.ReceiveAsync(bufferSegment, cancellationToken);
-            var message = JsonDocument.Parse(Encoding.Default.GetString(bufferSegment.Slice(0, result.Count)));
-            var metadataJson = message.RootElement.GetProperty("metadata");
-            var metadata = new WSMessageMetadata()
-            {
-                message_id = metadataJson.GetProperty("message_id").GetString(),
-                message_timestamp = metadataJson.GetProperty("message_timestamp").GetString(),
-                message_type = metadataJson.GetProperty("message_type").GetString() switch
-                {
-                    "session_welcome" => WSMessageMetadata.MessageType.session_welcome,
-                    "session_keepalive" => WSMessageMetadata.MessageType.session_keepalive,
-                    "notification" => WSMessageMetadata.MessageType.notification,
-                    "session_reconnect" => WSMessageMetadata.MessageType.session_reconnect,
-                    "revocation" => WSMessageMetadata.MessageType.revocation,
-                    _ => (WSMessageMetadata.MessageType)(-1)
-                }
-            };
-
-            return new WSMessage()
-            {
-                metadata = metadata,
-                payload = message.RootElement.GetProperty("payload")
-            };
-        }
-
-        public static async Task SubscribeToWebSocketEventSub(TwitchWebSocket twitchSocket, string type, int version, string condition, string authToken, CancellationToken cancellationToken)
-        {
-            var request = new HttpRequestMessage()
-            {
-                RequestUri = new Uri("https://api.twitch.tv/helix/eventsub/subscriptions"),
-                Method = HttpMethod.Post,
-                Content = new StringContent($"{{\"type\":\"{type}\",\"version\":\"{version}\",\"condition\":{condition},\"transport\":{{\"method\":\"websocket\",\"session_id\":\"{twitchSocket.SessionId}\"}}}}", Encoding.UTF8, "application/json")
-            };
-            request.Headers.Add("Client-Id", "kimne78kx3ncx6brgo4mv6wki5h1ko");
-            request.Headers.Add("Authorization", $"Bearer {authToken}");
-
-            using HttpClient client = new();
-            var response = await client.SendAsync(request, cancellationToken);
-            response.EnsureSuccessStatusCode();
         }
     }
 }
