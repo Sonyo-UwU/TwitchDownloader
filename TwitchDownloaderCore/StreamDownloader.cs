@@ -147,7 +147,7 @@ namespace TwitchDownloaderCore
                                 downloadState.HeaderFile = await GetHeaderFile(playlist, cancellationToken);
                             }
 
-                            var completedParts = downloadState.AppendSegment(m3u8.FileMetadata.TwitchInfo.FirstOrDefault(x => x.Key == "BROADCAST-ID").Value, playlist);
+                            var completedParts = downloadState.AppendSegment(playlist);
                             foreach (var autoResetEvent in autoResetEvents)
                                 autoResetEvent.Set();
 

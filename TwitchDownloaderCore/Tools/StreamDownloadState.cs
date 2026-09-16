@@ -36,40 +36,35 @@ namespace TwitchDownloaderCore.Tools
 
         private PartState _lastPartProcessed;
 
-        public IEnumerable<PartState> AppendSegment(string streamId, M3U8 playlist)
+        public IEnumerable<PartState> AppendSegment(M3U8 playlist)
         {
-            var firstStream = playlist.Streams[0];
             if (_expectedNextPart == default)
             {
-                _expectedNextPart = firstStream.ProgramDateTime;
-            }
-            else
-            {
-                if (firstStream.ProgramDateTime - _expectedNextPart > TimeSpan.Zero)
-                {
-                    logger.LogWarning($"Parts from {_expectedNextPart.ToString("yyyy-MM-ddTHH-mm-ss.fffffff")} to {firstStream.ProgramDateTime.ToString("yyyy-MM-ddTHH-mm-ss.fffffff")} are missing and will be missing from the finalized video");
-
-                    lock (TimeWriteLock)
-                    {
-                        TotalMissingTime += firstStream.ProgramDateTime - _expectedNextPart;
-                    }
-                }
+                _expectedNextPart = playlist.Streams[0].ProgramDateTime;
             }
 
-            uint? startId = playlist.FileMetadata.TwitchLiveSequence ?? playlist.FileMetadata.MediaSequence;
             for (int i = 0; i < playlist.Streams.Length; i++)
             {
                 M3U8.Stream stream = playlist.Streams[i];
                 if (stream.ProgramDateTime < _expectedNextPart)
                     continue;
 
-                var filename = startId is not null ? streamId + "-" + (startId + i).ToString() : stream.ProgramDateTime.ToString("yyyy-MM-ddTHH-mm-ss.fffffff");
+                if (stream.ProgramDateTime - _expectedNextPart > TimeSpan.Zero)
+                {
+                    logger.LogWarning($"Parts from {_expectedNextPart.ToString("yyyy-MM-ddTHH-mm-ss.fffffff")} to {stream.ProgramDateTime.ToString("yyyy-MM-ddTHH-mm-ss.fffffff")} are missing from the live feed.");
+
+                    lock (TimeWriteLock)
+                    {
+                        TotalMissingTime += stream.ProgramDateTime - _expectedNextPart;
+                    }
+                }
+
                 PartQueue.Enqueue(new()
                 {
                     Path = stream.Path,
                     ProgramDateTime = stream.ProgramDateTime,
                     Duration = TimeSpan.FromSeconds((double)stream.PartInfo.Duration),
-                    FileName = filename + DownloadTools.GetStreamPartFileExtension(stream.Path)
+                    FileName = stream.ProgramDateTime.ToString("yyyy-MM-ddTHH-mm-ss.fffffff") + DownloadTools.GetStreamPartFileExtension(stream.Path)
                 });
                 _expectedNextPart = stream.ProgramDateTime + TimeSpan.FromSeconds((double)stream.PartInfo.Duration);
             }
