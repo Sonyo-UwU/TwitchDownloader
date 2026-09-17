@@ -98,7 +98,7 @@ namespace TwitchDownloaderCore
             DateTime accessTokenExpirationTime = DateTime.MinValue;
 
             var isFirstIteration = true;
-            var retryCount = 0;
+            TimeSpan retryTime = TimeSpan.Zero;
             while (true)
             {
                 try
@@ -165,14 +165,15 @@ namespace TwitchDownloaderCore
                             await FfmpegConcatList.SerializeAsync(fs, completedParts.Select(x => (x.FileName, (decimal)x.Duration.TotalSeconds, GetStreamIds(x.Path))), cancellationToken);
 
                             isFirstIteration = false;
-                            retryCount = 0;
+                            retryTime = TimeSpan.Zero;
                         } while (await timer.WaitForNextTickAsync(linkedCts.Token));
                     }
 
-                    // End of live stream, retry repeatedly for a minute in case stream crashed
-                    _progress.LogVerbose("Stream playlist not found, retrying in 5s...");
-                    if (++retryCount > 12)
+                    // End of live stream, retry repeatedly in case stream crashed
+                    retryTime += TimeSpan.FromSeconds(5);
+                    if (retryTime > _downloadOptions.StreamEndWaitTime)
                         break;
+                    _progress.LogVerbose("Stream playlist not found, retrying in 5s...");
                     await Task.Delay(5000, linkedCts.Token);
                 }
                 catch (OperationCanceledException)

@@ -18,6 +18,10 @@ namespace TwitchDownloaderCLI.Modes.Arguments
         [Option('t', "threads", Default = 4, HelpText = "Number of parallel download threads. Large values may result in IP rate limiting.")]
         public int DownloadThreads { get; set; }
 
+        // Use string instead of TimeDuration to allow the user to specify 0 but still have a non-zero default value
+        [Option('w', "end-wait", Default = "1m", HelpText = "Amount of time to wait after the end of stream before finalizing the video. If another stream starts during that time, the download continues and both streams are concatenated. Default is one minute. Can be milliseconds (#ms), seconds (#s), minutes (#m), hours (#h), or time (##:##:##).")]
+        public string StreamEndWaitTime { get; set; }
+
         [Option('d', "delay-download", HelpText = "Wait until the channel goes live.")]
         public bool DelayDownload { get; set; }
 
