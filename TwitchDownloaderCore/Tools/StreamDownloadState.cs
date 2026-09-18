@@ -43,16 +43,27 @@ namespace TwitchDownloaderCore.Tools
                 _expectedNextPart = playlist.Streams[0].ProgramDateTime;
             }
 
+            var correctedParts = GetCorrectedPartStates();
+
             for (int i = 0; i < playlist.Streams.Length; i++)
             {
                 M3U8.Stream stream = playlist.Streams[i];
                 if (stream.ProgramDateTime < _expectedNextPart)
                     continue;
 
-                if (stream.ProgramDateTime - _expectedNextPart > TimeSpan.Zero)
+                // Streams might rarely have a gap of a few microseconds
+                if (stream.ProgramDateTime - _expectedNextPart > TimeSpan.FromMicroseconds(10))
                 {
                     logger.LogWarning($"Parts from {_expectedNextPart.ToString("yyyy-MM-ddTHH-mm-ss.fffffff")} to {stream.ProgramDateTime.ToString("yyyy-MM-ddTHH-mm-ss.fffffff")} are missing from the live feed.");
 
+                    ProcessedParts[_expectedNextPart] = new PartState()
+                    {
+                        ProgramDateTime = _expectedNextPart,
+                        Duration = stream.ProgramDateTime - _expectedNextPart,
+                        FileName = "",
+                        Path = "",
+                        IsDownloaded = false
+                    };
                     lock (TimeWriteLock)
                     {
                         TotalMissingTime += stream.ProgramDateTime - _expectedNextPart;
@@ -69,7 +80,7 @@ namespace TwitchDownloaderCore.Tools
                 _expectedNextPart = stream.ProgramDateTime + TimeSpan.FromSeconds((double)stream.PartInfo.Duration);
             }
 
-            return GetCorrectedPartStates();
+            return correctedParts;
         }
 
         public void StopDownload()
@@ -111,24 +122,6 @@ namespace TwitchDownloaderCore.Tools
                     correctedParts.Add(_lastPartProcessed);
                     _lastPartProcessed = nextPart;
                 }
-            }
-
-            // Parts are available for about 6 minutes, if a part is older than 7 minutes old, it's definitely lost
-            if (!ProcessedParts.IsEmpty && _expectedNextPart - _lastPartProcessed.ProgramDateTime > TimeSpan.FromMinutes(7))
-            {
-                // There was some parts missing
-                var oldest = ProcessedParts.Values.MinBy(x => x.ProgramDateTime);
-                _lastPartProcessed.Duration = oldest.ProgramDateTime - _lastPartProcessed.ProgramDateTime;
-                correctedParts.Add(_lastPartProcessed);
-                ProcessedParts.TryRemove(oldest.ProgramDateTime, out _lastPartProcessed);
-
-                bool stop = false;
-                do
-                {
-                    var nextParts = GetCorrectedPartStates();
-                    stop = nextParts.Count == 0 || ProcessedParts.IsEmpty;
-                    correctedParts.AddRange(nextParts);
-                } while (!stop);
             }
 
             return correctedParts;

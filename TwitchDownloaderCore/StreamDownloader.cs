@@ -108,8 +108,7 @@ namespace TwitchDownloaderCore
                         (accessToken, accessTokenExpirationTime) = await GetAccessToken(cancellationToken);
                     }
 
-                    var m3u8 = await GetM3U8(accessToken, linkedCts.Token);
-                    var quality = GetQuality(m3u8);
+                    var quality = await GetQuality(accessToken, linkedCts.Token);
 
                     if (isFirstIteration)
                     {
@@ -154,7 +153,7 @@ namespace TwitchDownloaderCore
                             if (!progressTemplateIncludesMissingTime && downloadState.TotalMissingTime > TimeSpan.Zero)
                             {
                                 _progress.SetTemplateStatus(
-                                    "Downloading Stream ({0}h{1:m\\ms\\s} downloaded, {2:h\\hm\\ms\\s} missing) [2/3]",
+                                    "Downloading Stream ({0}h{1:m\\ms\\s} downloaded, {2:h\\hm\\ms\\s} missing) [1/2]",
                                     (int)downloadState.TotalDownloadedTime.TotalHours,
                                     downloadState.TotalDownloadedTime,
                                     downloadState.TotalMissingTime);
@@ -303,7 +302,7 @@ namespace TwitchDownloaderCore
             return (token, DateTime.UnixEpoch.AddSeconds(epochTime));
         }
 
-        private async Task<M3U8> GetM3U8(PlaybackAccessToken accessToken, CancellationToken cancellationToken)
+        private async Task<IVideoQuality<StreamQuality>> GetQuality(PlaybackAccessToken accessToken, CancellationToken cancellationToken)
         {
             var playlistString = await TwitchHelper.GetStreamPlaylist(
                 _downloadOptions.ChannelLogin,
@@ -316,14 +315,6 @@ namespace TwitchDownloaderCore
             }
 
             var m3u8 = M3U8.Parse(playlistString);
-            return m3u8;
-        }
-
-        private IVideoQuality<StreamQuality> GetQuality(M3U8 m3u8)
-        {
-            if (m3u8 is null)
-                return null;
-
             var (availableQualities, unavailableQualities) = VideoQualities.FromStreamM3U8(m3u8);
             var allQualities = new StreamVideoQualities([.. availableQualities.Qualities, .. unavailableQualities.Qualities]);
 
