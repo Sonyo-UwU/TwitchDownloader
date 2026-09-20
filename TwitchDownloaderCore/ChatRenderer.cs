@@ -75,6 +75,7 @@ namespace TwitchDownloaderCore
         private SKPaint outlinePaint;
         private readonly HighlightIcons highlightIcons;
         private int _usernameCenteredY;
+        private PronounsManager _pronounsManager;
 
         private Dictionary<int, string[]> AllEmojiSequences => field ??=
             _emojiCache.Keys
@@ -100,6 +101,7 @@ namespace TwitchDownloaderCore
             nameFont = new SKPaint { LcdRenderText = true, SubpixelText = true, TextSize = (float)renderOptions.EffectiveUsernameFontSize, IsAntialias = true, IsAutohinted = true, HintingLevel = SKPaintHinting.Full, FilterQuality = SKFilterQuality.High };
             messageFont = new SKPaint { LcdRenderText = true, SubpixelText = true, TextSize = (float)renderOptions.FontSize, IsAntialias = true, IsAutohinted = true, HintingLevel = SKPaintHinting.Full, FilterQuality = SKFilterQuality.High, Color = renderOptions.MessageColor };
             highlightIcons = new HighlightIcons(renderOptions, _cacheDir, Purple, outlinePaint);
+            _pronounsManager = new();
         }
 
         public async Task RenderVideoAsync(CancellationToken cancellationToken)
@@ -957,6 +959,7 @@ namespace TwitchDownloaderCore
             {
                 DrawBadges(comment, sectionImages, ref drawPos);
             }
+            DrawPronouns(comment, sectionImages, ref drawPos, defaultPos);
             DrawUsername(comment, sectionImages, ref drawPos, defaultPos, commentIndex: commentIndex);
             DrawMessage(comment, sectionImages, emotePositionList, highlightWords, ref drawPos, defaultPos);
 
@@ -1858,6 +1861,23 @@ namespace TwitchDownloaderCore
             }
         }
 
+        private void DrawPronouns(Comment comment, List<SectionImage> sectionImages, ref Point drawPos, Point defaultPos)
+        {
+            var pronouns = comment.commenter.pronouns ?? _pronounsManager.GetPronouns(comment.commenter.name);
+            if (string.IsNullOrEmpty(pronouns))
+            {
+                return;
+            }
+
+            var width = MeasureText(pronouns, messageFont);
+            var paint = messageFont.Clone();
+            paint.Style = SKPaintStyle.Stroke;
+            sectionImages[^1].Canvas.DrawRoundRect(drawPos.X, 0, width + 4, sectionImages[^1].Info.Height - paint.StrokeWidth, 5, 5, paint);
+            drawPos.X += 2;
+            DrawText(pronouns, messageFont, true, sectionImages, ref drawPos, defaultPos, false);
+            drawPos.X += 2;
+        }
+
         private void DrawAvatar(Comment comment, List<SectionImage> sectionImages, ref Point drawPos)
         {
             var avatarUrl = comment.commenter.logo;
@@ -1976,8 +1996,9 @@ namespace TwitchDownloaderCore
             var cheerTask = GetScaledBits(cancellationToken);
             var emojiTask = GetScaledEmojis(cancellationToken);
             var avatarTask = renderOptions.RenderUserAvatars ? GetScaledAvatars(cancellationToken) : Task.FromResult(new Dictionary<string, SKImage>());
+            var pronounsTask = _pronounsManager.FetchPronouns(chatRoot.comments.Select(c => c.commenter.name).Distinct());
 
-            await Task.WhenAll(badgeTask, emoteTask, emoteThirdTask, cheerTask, emojiTask, avatarTask);
+            await Task.WhenAll(badgeTask, emoteTask, emoteThirdTask, cheerTask, emojiTask, avatarTask, pronounsTask);
 
             // Clear chatRoot.embeddedData and manually call GC to save some memory
             chatRoot.embeddedData = null;

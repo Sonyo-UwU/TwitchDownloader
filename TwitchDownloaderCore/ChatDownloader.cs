@@ -18,6 +18,7 @@ namespace TwitchDownloaderCore
         private readonly ChatDownloadOptions downloadOptions;
         private readonly ITaskProgress _progress;
         private readonly string _cacheDir;
+        private readonly PronounsManager _pronounsManager;
 
         private static readonly HttpClient HttpClient = new()
         {
@@ -36,6 +37,7 @@ namespace TwitchDownloaderCore
             downloadOptions = chatDownloadOptions;
             _progress = progress;
             _cacheDir = CacheDirectoryService.GetCacheDirectory(downloadOptions.TempFolder);
+            _pronounsManager = new();
         }
 
         private async Task<List<Comment>> DownloadSection(Range downloadRange, string videoId, DateTime videoCreatedAt, bool runToEnd, IProgress<int> downloadProgress, CancellationToken cancellationToken)
@@ -110,6 +112,7 @@ namespace TwitchDownloaderCore
                 nullCount = Math.Max(0, nullCount - BACK_OFF_FACTOR);
                 errorCount = Math.Max(0, errorCount - BACK_OFF_FACTOR);
 
+                await _pronounsManager.FetchPronouns(commentResponse.data.video.comments.edges.Select(c => c.node.commenter?.login));
                 var convertedComments = ConvertComments(commentResponse.data.video, videoCreatedAt);
                 foreach (var comment in convertedComments)
                 {
@@ -173,7 +176,8 @@ namespace TwitchDownloaderCore
                     {
                         display_name = oldComment.commenter.displayName.Trim(),
                         _id = oldComment.commenter.id,
-                        name = oldComment.commenter.login
+                        name = oldComment.commenter.login,
+                        pronouns = _pronounsManager.GetPronouns(oldComment.commenter.login)
                     }
                 };
                 var message = new Message();

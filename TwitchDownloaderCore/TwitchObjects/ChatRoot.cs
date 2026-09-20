@@ -27,6 +27,7 @@ namespace TwitchDownloaderCore.TwitchObjects
         public DateTime created_at { get; set; }
         public DateTime updated_at { get; set; }
         public string logo { get; set; }
+        public string pronouns { get; set; }
 
         public Commenter Clone()
         {

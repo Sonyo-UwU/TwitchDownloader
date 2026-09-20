@@ -1554,5 +1554,23 @@ namespace TwitchDownloaderCore
 
             return desiredHeight;
         }
+
+        public static async Task<Dictionary<string, Pronoun>> GetAllPronouns()
+        {
+            var response = await httpClient.GetAsync("https://api.pronouns.alejo.io/v1/pronouns");
+            response.EnsureSuccessStatusCode();
+            var document = JsonDocument.Parse(response.Content.ReadAsStream());
+            return document.Deserialize<Dictionary<string, Pronoun>>();
+        }
+
+        public static async Task<UserPronouns> GetUserPronouns(string login)
+        {
+            var response = await httpClient.GetAsync("https://api.pronouns.alejo.io/v1/users/" + login);
+            if (response.IsSuccessStatusCode)
+            {
+                return await response.Content.ReadFromJsonAsync<UserPronouns>();
+            }
+            return null;
+        }
     }
 }
