@@ -9,7 +9,6 @@ namespace TwitchDownloaderCore
 {
     public sealed class ChatMerger(ChatMergeOptions mergeOptions, ITaskProgress progress)
     {
-
         private readonly ChatMergeOptions mergeOptions = mergeOptions;
         private ChatRoot[] InputChatRoots;
         private readonly ITaskProgress _progress = progress;

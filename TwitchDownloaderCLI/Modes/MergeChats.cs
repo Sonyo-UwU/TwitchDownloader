@@ -82,7 +82,6 @@ namespace TwitchDownloaderCLI.Modes
                 OutputFormat = outFormat,
                 TextTimestampFormat = inputOptions.TimeFormat,
                 DelayBetweenParts = ((TimeSpan)inputOptions.DelayBetweenParts).TotalSeconds,
-                TempFolder = inputOptions.TempFolder,
                 FileCollisionCallback = collisionHandler.HandleCollisionCallback,
             };
 

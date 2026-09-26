@@ -12,6 +12,7 @@ namespace TwitchDownloaderCLI.Modes
     internal static class FfmpegHandler
     {
         public static readonly string FfmpegExecutableName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "ffmpeg.exe" : "ffmpeg";
+        public static readonly string FfprobeExecutableName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "ffprobe.exe" : "ffprobe";
 
         public static void ParseArgs(FfmpegArgs args)
         {
