@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using TwitchDownloaderCore.Interfaces;
 using TwitchDownloaderCore.Options;
+using TwitchDownloaderCore.Tools;
 
 namespace TwitchDownloaderCore
 {
@@ -68,50 +69,25 @@ namespace TwitchDownloaderCore
             var ffmpegExitCode = await RunFfmpeg(outputFileInfo, ffmpegLogFile, totalVideoLength, maxWidth, maxHeight, maxFrameRate, cancellationToken);
 
             outputFileInfo.Refresh();
-            if (ffmpegExitCode != 0 || !outputFileInfo.Exists || outputFileInfo.Length == 0)
+            if ((ffmpegExitCode != 0 || !outputFileInfo.Exists || outputFileInfo.Length == 0) && !cancellationToken.IsCancellationRequested)
             {
                 throw new Exception($"Failed to merge videos. A log file can be found at {ffmpegLogFile}.");
             }
 
             File.Delete(ffmpegLogFile);
+            cancellationToken.ThrowIfCancellationRequested();
 
             _progress.ReportProgress(100);
         }
 
         private async Task<(TimeSpan duration, int width, int height, float frameRate)> GetVideoInfo(string input, CancellationToken cancellationToken)
         {
-            using var process = new Process
-            {
-                StartInfo =
-                {
-                    FileName = mergeOptions.FfprobePath,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardInput = false,
-                    RedirectStandardOutput = true,
-                }
-            };
-
-            var args = new List<string>
-            {
-                "-v", "error",
-                "-show_entries", "format=duration:stream=width,height,r_frame_rate",
-                "-of", "default=noprint_wrappers=1",
-                "-sexagesimal",
-                input
-            };
-
-            foreach (var arg in args)
-            {
-                process.StartInfo.ArgumentList.Add(arg);
-            }
-
             TimeSpan duration = TimeSpan.Zero;
             int maxWidth = 0;
             int maxHeight = 0;
             float maxFps = 0;
 
-            process.OutputDataReceived += (sender, e) =>
+            await FfprobeRunner.Run(mergeOptions.FfprobePath, input, "format=duration:stream=width,height,r_frame_rate", (sender, e) =>
             {
                 if (e.Data is null)
                     return;
@@ -147,14 +123,7 @@ namespace TwitchDownloaderCore
                         }
                     }
                 }
-            };
-
-            cancellationToken.ThrowIfCancellationRequested();
-            cancellationToken.Register(process.Kill);
-            process.Start();
-            process.BeginOutputReadLine();
-
-            await process.WaitForExitAsync(cancellationToken);
+            }, cancellationToken);
 
             return (duration, maxWidth, maxHeight, maxFps);
         }
@@ -228,7 +197,8 @@ namespace TwitchDownloaderCore
             logWriter.AutoFlush = true;
             do // We cannot handle logging inside the ErrorDataReceived lambda because more than 1 can come in at once and cause a race condition. lay295#598
             {
-                await Task.Delay(200, cancellationToken);
+                // Intentionally don't throw until the log file gets deleted
+                await Task.Delay(200, CancellationToken.None);
                 while (!logQueue.IsEmpty && logQueue.TryDequeue(out var logMessage))
                 {
                     await logWriter.WriteLineAsync(logMessage);

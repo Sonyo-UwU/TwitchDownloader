@@ -65,13 +65,13 @@
                                                 <TextBlock Grid.Column="0" Margin="8,0,0,0" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource AppText}" />
                                                 <TextBlock Grid.Column="1" Margin="8,0,8,0" Text="{Binding DisplayTime}" Foreground="{DynamicResource AppText}" />
                                                 <StackPanel Grid.Column="2" Orientation="Horizontal">
-                                                    <Button Padding="0" VerticalAlignment="Top" Width="22" Height="22" Margin="0, 0, 2, 0" Click="BtnMoveInputUp_Click" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}">
+                                                    <Button Padding="0" VerticalAlignment="Top" Width="22" Height="22" Margin="0, 0, 2, 0" Click="BtnMoveChatInputUp_Click" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}">
                                                         <fa:SvgAwesome Icon="Solid_CaretUp" Foreground="{DynamicResource AppTextDisabled}" />
                                                     </Button>
-                                                    <Button Padding="0" VerticalAlignment="Top" Width="22" Height="22" Margin="0, 0, 2, 0" Click="BtnMoveInputDown_Click" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}">
+                                                    <Button Padding="0" VerticalAlignment="Top" Width="22" Height="22" Margin="0, 0, 2, 0" Click="BtnMoveChatInputDown_Click" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}">
                                                         <fa:SvgAwesome Icon="Solid_CaretDown" Foreground="{DynamicResource AppTextDisabled}" />
                                                     </Button>
-                                                    <Button Padding="3" VerticalAlignment="Top" Width="22" Height="22" Click="BtnRemoveInput_Click" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}">
+                                                    <Button Padding="3" VerticalAlignment="Top" Width="22" Height="22" Click="BtnRemoveChatInput_Click" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}">
                                                         <fa:SvgAwesome Icon="Solid_Times" Foreground="{DynamicResource AppTextDisabled}" />
                                                     </Button>
                                                 </StackPanel>
@@ -142,13 +142,13 @@
                                                 <TextBlock Grid.Column="0" Margin="8,0,0,0" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource AppText}" />
                                                 <TextBlock Grid.Column="1" Margin="8,0,8,0" Text="{Binding DisplayTime}" Foreground="{DynamicResource AppText}" />
                                                 <StackPanel Grid.Column="2" Orientation="Horizontal">
-                                                    <Button Padding="0" VerticalAlignment="Top" Width="22" Height="22" Margin="0, 0, 2, 0" Click="BtnMoveInputUp_Click" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}">
+                                                    <Button Padding="0" VerticalAlignment="Top" Width="22" Height="22" Margin="0, 0, 2, 0" Click="BtnMoveVideoInputUp_Click" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}">
                                                         <fa:SvgAwesome Icon="Solid_CaretUp" Foreground="{DynamicResource AppTextDisabled}" />
                                                     </Button>
-                                                    <Button Padding="0" VerticalAlignment="Top" Width="22" Height="22" Margin="0, 0, 2, 0" Click="BtnMoveInputDown_Click" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}">
+                                                    <Button Padding="0" VerticalAlignment="Top" Width="22" Height="22" Margin="0, 0, 2, 0" Click="BtnMoveVideoInputDown_Click" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}">
                                                         <fa:SvgAwesome Icon="Solid_CaretDown" Foreground="{DynamicResource AppTextDisabled}" />
                                                     </Button>
-                                                    <Button Padding="3" VerticalAlignment="Top" Width="22" Height="22" Click="BtnRemoveInput_Click" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}">
+                                                    <Button Padding="3" VerticalAlignment="Top" Width="22" Height="22" Click="BtnRemoveVideoInput_Click" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}">
                                                         <fa:SvgAwesome Icon="Solid_Times" Foreground="{DynamicResource AppTextDisabled}" />
                                                     </Button>
                                                 </StackPanel>
