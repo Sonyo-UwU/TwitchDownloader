@@ -167,7 +167,7 @@
                             </StackPanel>
                             <StackPanel>
                                 <TextBlock x:Name="labelLengthVideo" Text="0:0:0" Margin="5,0,0,0" Foreground="{DynamicResource AppText}" />
-                                <hc:NumericUpDown x:Name="numDelayVideo" Margin="5,6,0,0" Minimum="0" Maximum="48" Value="3" Width="75" ValueChanged="numDelayVideo_ValueChanged" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}" />
+                                <hc:NumericUpDown x:Name="numDelayVideo" Margin="5,6,0,0" Minimum="0" Maximum="60" Value="3" Width="75" ValueChanged="numDelayVideo_ValueChanged" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}" />
                             </StackPanel>
                         </DockPanel>
                     </DockPanel>

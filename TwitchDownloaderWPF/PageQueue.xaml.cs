@@ -96,6 +96,14 @@ namespace TwitchDownloaderWPF
                                 currentChat++;
                                 task.RunAsync();
                                 break;
+                            case ChatMergeTask when currentChat < maxChat:
+                                currentChat++;
+                                task.RunAsync();
+                                break;
+                            case VideoMergeTask when currentChat < maxChat:
+                                currentChat++;
+                                task.RunAsync();
+                                break;
                             case ChatRenderTask when currentRender < maxRender:
                                 currentRender++;
                                 task.RunAsync();

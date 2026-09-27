@@ -49,8 +49,8 @@ namespace TwitchDownloaderWPF
             {
                 checkVideo.Visibility = Visibility.Collapsed;
                 checkDelay.Visibility = Visibility.Collapsed;
-                checkChat.IsChecked = true;
-                checkChat.IsEnabled = false;
+                checkChatDownload.IsChecked = true;
+                checkChatDownload.IsEnabled = false;
                 TextDownloadFormat.Visibility = Visibility.Collapsed;
                 radioJson.Visibility = Visibility.Collapsed;
                 radioTxt.Visibility = Visibility.Collapsed;
@@ -74,7 +74,7 @@ namespace TwitchDownloaderWPF
             {
                 checkVideo.Visibility = Visibility.Collapsed;
                 checkDelay.Visibility = Visibility.Collapsed;
-                checkChat.Visibility = Visibility.Collapsed;
+                checkChatDownload.Visibility = Visibility.Collapsed;
                 TextDownloadFormat.Visibility = Visibility.Collapsed;
                 radioJson.Visibility = Visibility.Collapsed;
                 radioTxt.Visibility = Visibility.Collapsed;
@@ -87,11 +87,34 @@ namespace TwitchDownloaderWPF
                 checkDelayChat.Visibility = Visibility.Collapsed;
                 checkRender.Visibility = Visibility.Collapsed;
             }
+            else if (page is PageVodMerge pageMerge)
+            {
+                checkVideo.Visibility = Visibility.Collapsed;
+                checkDelay.Visibility = Visibility.Collapsed;
+                checkChatDownload.Visibility = Visibility.Collapsed;
+                checkDelayChat.Visibility = Visibility.Collapsed;
+                checkEmbed.Visibility = Visibility.Collapsed;
+                TextDownloadFormat.Visibility = Visibility.Collapsed;
+                radioJson.Visibility = Visibility.Collapsed;
+                radioTxt.Visibility = Visibility.Collapsed;
+                radioHTML.Visibility = Visibility.Collapsed;
+                TextCompression.Visibility = Visibility.Collapsed;
+                RadioCompressionNone.Visibility = Visibility.Collapsed;
+                RadioCompressionGzip.Visibility = Visibility.Collapsed;
+                checkEmbed.Visibility = Visibility.Collapsed;
+                StackThirdPartyEmbed.Visibility = Visibility.Collapsed;
+                checkDelayChat.Visibility = Visibility.Collapsed;
+                numDelay.Visibility = Visibility.Collapsed;
+                checkRender.Visibility = pageMerge.QueueChatMode ? Visibility.Visible : Visibility.Collapsed;
+                checkMerge.Visibility = Visibility.Visible;
+                checkMerge.IsChecked = true;
+                checkMerge.IsEnabled = false;
+            }
             else if (page is PageChatRender)
             {
                 checkVideo.Visibility = Visibility.Collapsed;
                 checkDelay.Visibility = Visibility.Collapsed;
-                checkChat.Visibility = Visibility.Collapsed;
+                checkChatDownload.Visibility = Visibility.Collapsed;
                 TextDownloadFormat.Visibility = Visibility.Collapsed;
                 radioJson.Visibility = Visibility.Collapsed;
                 radioTxt.Visibility = Visibility.Collapsed;
@@ -105,6 +128,25 @@ namespace TwitchDownloaderWPF
                 checkRender.IsChecked = true;
                 checkRender.IsEnabled = false;
             }
+
+            CheckBttvEmbed.IsChecked = Settings.Default.BTTVEmotes;
+            CheckFfzEmbed.IsChecked = Settings.Default.FFZEmotes;
+            CheckStvEmbed.IsChecked = Settings.Default.STVEmotes;
+            _ = (ChatFormat)Settings.Default.ChatDownloadType switch
+            {
+                ChatFormat.Text => radioTxt.IsChecked = true,
+                ChatFormat.Html => radioHTML.IsChecked = true,
+                ChatFormat.Json => radioJson.IsChecked = true,
+                _ => null,
+            };
+            _ = (ChatCompression)Settings.Default.ChatJsonCompression switch
+            {
+                ChatCompression.None => RadioCompressionNone.IsChecked = true,
+                ChatCompression.Gzip => RadioCompressionGzip.IsChecked = true,
+                _ => null,
+            };
+
+            UpdateEnabled();
         }
 
         public WindowQueueOptions(List<TaskData> dataList)
@@ -138,6 +180,10 @@ namespace TwitchDownloaderWPF
                     break;
                 }
             }
+
+            checkMerge.Visibility = dataList.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+
+            UpdateEnabled();
         }
 
         private FileInfo HandleFileCollisionCallback(FileInfo fileInfo)
@@ -190,7 +236,7 @@ namespace TwitchDownloaderWPF
                         PageQueue.taskList.Add(downloadTask);
                     }
 
-                    if (checkChat.IsChecked.GetValueOrDefault())
+                    if (checkChatDownload.IsChecked.GetValueOrDefault())
                     {
                         ChatDownloadOptions chatOptions = MainWindow.pageChatDownload.GetOptions(null);
                         chatOptions.Id = downloadOptions.Id.ToString();
@@ -324,7 +370,7 @@ namespace TwitchDownloaderWPF
                         PageQueue.taskList.Add(downloadTask);
                     }
 
-                    if (checkChat.IsChecked.GetValueOrDefault())
+                    if (checkChatDownload.IsChecked.GetValueOrDefault())
                     {
                         ChatDownloadOptions chatOptions = MainWindow.pageChatDownload.GetOptions(null);
                         chatOptions.Id = downloadOptions.Id;
@@ -518,6 +564,111 @@ namespace TwitchDownloaderWPF
                     this.Close();
                 }
 
+                if (_parentPage is PageVodMerge mergePage)
+                {
+                    string folderPath = textFolder.Text;
+                    if (!Directory.Exists(folderPath))
+                    {
+                        try
+                        {
+                            TwitchHelper.CreateDirectory(folderPath);
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show(this, Translations.Strings.InvalidFolderPathMessage, Translations.Strings.InvalidFolderPath, MessageBoxButton.OK, MessageBoxImage.Error);
+
+                            if (Settings.Default.VerboseErrors)
+                            {
+                                MessageBox.Show(this, ex.ToString(), Translations.Strings.VerboseErrorOutput, MessageBoxButton.OK, MessageBoxImage.Error);
+                            }
+
+                            return;
+                        }
+                    }
+
+                    if (mergePage.QueueChatMode)
+                    {
+                        ChatMergeOptions mergeOptions = mergePage.GetChatOptions(null);
+                        mergeOptions.OutputFile = Path.Combine(folderPath,
+                            FilenameService.GetFilename(Settings.Default.TemplateChat,
+                                                        mergePage.ChatInfo.video.title,
+                                                        mergePage.ChatInfo.video.id,
+                                                        mergePage.ChatInfo.video.created_at,
+                                                        mergePage.ChatInfo.streamer.name,
+                                                        mergePage.ChatInfo.streamer.id.ToString(),
+                                                        TimeSpan.Zero,
+                                                        TimeSpan.FromSeconds(mergePage.ChatInfo.video.length),
+                                                        TimeSpan.FromSeconds(mergePage.ChatInfo.video.length),
+                                                        mergePage.ChatInfo.video.viewCount,
+                                                        mergePage.ChatInfo.video.game,
+                                                        mergePage.ChatInfo.clipper?.name,
+                                                        mergePage.ChatInfo.clipper?.id.ToString())
+                            + " Merged" + mergeOptions.FileExtension); //TODO: proper chat combine template
+                        mergeOptions.FileCollisionCallback = HandleFileCollisionCallback;
+
+                        ChatMergeTask mergeTask = new()
+                        {
+                            MergeOptions = mergeOptions,
+                            Info =
+                            {
+                                Title = mergePage.ChatInfo.video.title,
+                            }
+                        };
+
+                        lock (PageQueue.TaskLock)
+                        {
+                            PageQueue.taskList.Add(mergeTask);
+                        }
+
+                        if (checkRender.IsChecked.GetValueOrDefault() && mergeOptions.OutputFormat == ChatFormat.Json)
+                        {
+                            ChatRenderOptions renderOptions = MainWindow.pageChatRender.GetOptions(Path.ChangeExtension(mergeOptions.OutputFile.Replace(".gz", ""), '.' + MainWindow.pageChatRender.comboFormat.Text.ToLower()));
+                            renderOptions.InputFile = mergeOptions.OutputFile;
+                            renderOptions.FileCollisionCallback = HandleFileCollisionCallback;
+
+                            ChatRenderTask renderTask = new ChatRenderTask
+                            {
+                                DownloadOptions = renderOptions,
+                                Info =
+                                {
+                                    Title = mergePage.ChatInfo.video.title,
+                                },
+                                DependantTask = mergeTask
+                            };
+                            renderTask.ChangeStatus(TwitchTaskStatus.Waiting);
+
+                            lock (PageQueue.TaskLock)
+                            {
+                                PageQueue.taskList.Add(renderTask);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        VideoMergeOptions mergeOptions = mergePage.GetVideoOptions(null);
+                        mergeOptions.OutputFile = Path.Combine(folderPath,
+                            Path.GetFileNameWithoutExtension(mergePage.VideoFileName)
+                            + " Merged" + Path.GetExtension(mergePage.VideoFileName)); //TODO: proper video combine template
+                        mergeOptions.FileCollisionCallback = HandleFileCollisionCallback;
+
+                        VideoMergeTask mergeTask = new()
+                        {
+                            MergeOptions = mergeOptions,
+                            Info =
+                            {
+                                Title = Path.GetFileNameWithoutExtension(mergePage.VideoFileName),
+                            }
+                        };
+
+                        lock (PageQueue.TaskLock)
+                        {
+                            PageQueue.taskList.Add(mergeTask);
+                        }
+                    }
+
+                    this.Close();
+                }
+
                 if (_parentPage is PageChatRender chatRenderPage)
                 {
                     string folderPath = textFolder.Text;
@@ -599,6 +750,8 @@ namespace TwitchDownloaderWPF
                 }
             }
 
+            List<TwitchTask> chatTasks = [];
+            List<TwitchTask> videoTasks = [];
             foreach (var taskData in _dataList)
             {
                 if (checkVideo.IsChecked.GetValueOrDefault())
@@ -629,12 +782,9 @@ namespace TwitchDownloaderWPF
                         VodDownloadTask downloadTask = new VodDownloadTask
                         {
                             DownloadOptions = downloadOptions,
-                            Info =
-                            {
-                                Title = taskData.Title,
-                                Thumbnail = taskData.Thumbnail
-                            }
+                            Info = taskData
                         };
+                        videoTasks.Add(downloadTask);
 
                         lock (PageQueue.TaskLock)
                         {
@@ -661,12 +811,9 @@ namespace TwitchDownloaderWPF
                         ClipDownloadTask downloadTask = new ClipDownloadTask
                         {
                             DownloadOptions = downloadOptions,
-                            Info =
-                            {
-                                Title = taskData.Title,
-                                Thumbnail = taskData.Thumbnail
-                            }
+                            Info = taskData
                         };
+                        videoTasks.Add(downloadTask);
 
                         lock (PageQueue.TaskLock)
                         {
@@ -675,7 +822,7 @@ namespace TwitchDownloaderWPF
                     }
                 }
 
-                if (checkChat.IsChecked.GetValueOrDefault())
+                if (checkChatDownload.IsChecked.GetValueOrDefault())
                 {
                     ChatDownloadOptions downloadOptions = new ChatDownloadOptions
                     {
@@ -707,39 +854,118 @@ namespace TwitchDownloaderWPF
                     ChatDownloadTask downloadTask = new ChatDownloadTask
                     {
                         DownloadOptions = downloadOptions,
-                        Info =
-                        {
-                            Title = taskData.Title,
-                            Thumbnail = taskData.Thumbnail
-                        }
+                        Info = taskData
                     };
+                    chatTasks.Add(downloadTask);
 
                     lock (PageQueue.TaskLock)
                     {
                         PageQueue.taskList.Add(downloadTask);
                     }
+                }
 
-                    if (checkRender.IsChecked.GetValueOrDefault() && downloadOptions.DownloadFormat == ChatFormat.Json)
+                if (!checkMerge.IsChecked.GetValueOrDefault(true) && checkRender.IsChecked.GetValueOrDefault())
+                {
+                    var associatedTask = chatTasks[^1];
+                    if (Path.GetExtension(associatedTask.OutputFile) is ".json" or ".gz")
                     {
                         ChatRenderOptions renderOptions =
-                            MainWindow.pageChatRender.GetOptions(Path.ChangeExtension(downloadOptions.Filename.Replace(".gz", ""), '.' + MainWindow.pageChatRender.comboFormat.Text.ToLower()));
-                        if (renderOptions.OutputFile.Trim() == downloadOptions.Filename.Trim())
+                            MainWindow.pageChatRender.GetOptions(Path.ChangeExtension(associatedTask.OutputFile.Replace(".gz", ""), '.' + MainWindow.pageChatRender.comboFormat.Text.ToLower()));
+                        if (renderOptions.OutputFile.Trim() == associatedTask.OutputFile.Trim())
                         {
                             //Just in case VOD and chat paths are the same. Like the previous defaults
-                            renderOptions.OutputFile = Path.ChangeExtension(downloadOptions.Filename.Replace(".gz", ""), " - CHAT." + MainWindow.pageChatRender.comboFormat.Text.ToLower());
+                            renderOptions.OutputFile = Path.ChangeExtension(associatedTask.OutputFile.Replace(".gz", ""), " - CHAT." + MainWindow.pageChatRender.comboFormat.Text.ToLower());
                         }
-                        renderOptions.InputFile = downloadOptions.Filename;
+                        renderOptions.InputFile = associatedTask.OutputFile;
                         renderOptions.FileCollisionCallback = HandleFileCollisionCallback;
 
                         ChatRenderTask renderTask = new ChatRenderTask
                         {
                             DownloadOptions = renderOptions,
-                            Info =
-                            {
-                                Title = taskData.Title,
-                                Thumbnail = taskData.Thumbnail
-                            },
-                            DependantTask = downloadTask
+                            Info = taskData,
+                            DependantTask = associatedTask
+                        };
+                        renderTask.ChangeStatus(TwitchTaskStatus.Waiting);
+                        chatTasks[^1] = renderTask;
+
+                        lock (PageQueue.TaskLock)
+                        {
+                            PageQueue.taskList.Add(renderTask);
+                        }
+                    }
+                }
+            }
+
+
+            if (checkMerge.IsChecked.GetValueOrDefault())
+            {
+                if (chatTasks.Count > 0)
+                {
+                    ChatMergeOptions mergeOptions = new ChatMergeOptions
+                    {
+                        DelayBetweenParts = numDelay.Value,
+                        InputFiles = [.. chatTasks.Select(t => t.OutputFile)],
+                        FileCollisionCallback = HandleFileCollisionCallback
+                    };
+                    if (radioJson.IsChecked == true)
+                        mergeOptions.OutputFormat = ChatFormat.Json;
+                    else if (radioHTML.IsChecked == true)
+                        mergeOptions.OutputFormat = ChatFormat.Html;
+                    else
+                        mergeOptions.OutputFormat = ChatFormat.Text;
+                    // TODO: Support non-json chat compression
+                    if (RadioCompressionGzip.IsChecked.GetValueOrDefault() && mergeOptions.OutputFormat == ChatFormat.Json)
+                        mergeOptions.Compression = ChatCompression.Gzip;
+
+                    var taskData = chatTasks[0].Info;
+                    mergeOptions.OutputFile = Path.Combine(
+                        folderPath,
+                        FilenameService.GetFilename(
+                            Settings.Default.TemplateChat,
+                            taskData.Title,
+                            taskData.Id,
+                            taskData.Time,
+                            taskData.StreamerName,
+                            taskData.StreamerId,
+                            TimeSpan.Zero,
+                            TimeSpan.FromSeconds(taskData.Length),
+                            TimeSpan.FromSeconds(taskData.Length),
+                            taskData.Views,
+                            taskData.Game,
+                            taskData.ClipperName,
+                            taskData.ClipperId)
+                        + " Merged" + mergeOptions.FileExtension); //TODO: proper chat combine template
+
+                    ChatMergeTask mergeTask = new()
+                    {
+                        MergeOptions = mergeOptions,
+                        Info = taskData,
+                        DependantTasks = [.. chatTasks]
+                    };
+                    mergeTask.ChangeStatus(TwitchTaskStatus.Waiting);
+
+                    lock (PageQueue.TaskLock)
+                    {
+                        PageQueue.taskList.Add(mergeTask);
+                    }
+
+                    if (checkRender.IsChecked.GetValueOrDefault() && mergeOptions.OutputFormat == ChatFormat.Json)
+                    {
+                        ChatRenderOptions renderOptions =
+                        MainWindow.pageChatRender.GetOptions(Path.ChangeExtension(mergeOptions.OutputFile.Replace(".gz", ""), '.' + MainWindow.pageChatRender.comboFormat.Text.ToLower()));
+                        if (renderOptions.OutputFile.Trim() == mergeOptions.OutputFile.Trim())
+                        {
+                            //Just in case VOD and chat paths are the same. Like the previous defaults
+                            renderOptions.OutputFile = Path.ChangeExtension(mergeOptions.OutputFile.Replace(".gz", ""), " - CHAT." + MainWindow.pageChatRender.comboFormat.Text.ToLower());
+                        }
+                        renderOptions.InputFile = mergeOptions.OutputFile;
+                        renderOptions.FileCollisionCallback = HandleFileCollisionCallback;
+
+                        ChatRenderTask renderTask = new ChatRenderTask
+                        {
+                            DownloadOptions = renderOptions,
+                            Info = taskData,
+                            DependantTask = mergeTask
                         };
                         renderTask.ChangeStatus(TwitchTaskStatus.Waiting);
 
@@ -747,6 +973,50 @@ namespace TwitchDownloaderWPF
                         {
                             PageQueue.taskList.Add(renderTask);
                         }
+                    }
+                }
+
+                if (videoTasks.Count > 0)
+                {
+                    VideoMergeOptions mergeOptions = new VideoMergeOptions
+                    {
+                        DelayBetweenParts = numDelay.Value,
+                        InputFiles = [.. videoTasks.Select(t => t.OutputFile)],
+                        FfmpegPath = "ffmpeg",
+                        FfprobePath = "ffprobe",
+                        FileCollisionCallback = HandleFileCollisionCallback
+                    };
+
+                    var taskData = videoTasks[0].Info;
+                    mergeOptions.OutputFile = Path.Combine(
+                        folderPath,
+                        FilenameService.GetFilename(
+                            taskData.Id.All(char.IsDigit) ? Settings.Default.TemplateVod : Settings.Default.TemplateClip,
+                            taskData.Title,
+                            taskData.Id,
+                            taskData.Time,
+                            taskData.StreamerName,
+                            taskData.StreamerId,
+                            TimeSpan.Zero,
+                            TimeSpan.FromSeconds(taskData.Length),
+                            TimeSpan.FromSeconds(taskData.Length),
+                            taskData.Views,
+                            taskData.Game,
+                            taskData.ClipperName,
+                            taskData.ClipperId)
+                        + " Merged" + Path.GetExtension(videoTasks[0].OutputFile)); //TODO: proper video combine template
+
+                    VideoMergeTask mergeTask = new()
+                    {
+                        MergeOptions = mergeOptions,
+                        Info = taskData,
+                        DependantTasks = [.. videoTasks]
+                    };
+                    mergeTask.ChangeStatus(TwitchTaskStatus.Waiting);
+
+                    lock (PageQueue.TaskLock)
+                    {
+                        PageQueue.taskList.Add(mergeTask);
                     }
                 }
             }
@@ -778,98 +1048,54 @@ namespace TwitchDownloaderWPF
             Settings.Default.Save();
         }
 
-        private void checkChat_Checked(object sender, RoutedEventArgs e)
+        private void UpdateEnabled()
         {
-            checkRender.IsEnabled = true;
-            radioJson.IsEnabled = true;
-            radioTxt.IsEnabled = true;
-            radioHTML.IsEnabled = true;
-            checkEmbed.IsEnabled = true;
-            CheckBttvEmbed.IsEnabled = CheckFfzEmbed.IsEnabled = CheckStvEmbed.IsEnabled = checkEmbed.IsChecked.GetValueOrDefault();
-            checkDelayChat.IsEnabled = true;
-            RadioCompressionNone.IsEnabled = true;
-            RadioCompressionGzip.IsEnabled = true;
-            try
+            if (!IsInitialized)
+                return;
+
+            var enabledBrush  = (Brush)Application.Current.Resources["AppText"];
+            var disabledBrush = (Brush)Application.Current.Resources["AppTextDisabled"];
+
+            TextPreferredQuality.Foreground = checkVideo.IsChecked.GetValueOrDefault() ? enabledBrush : disabledBrush;
+            ComboPreferredQuality.IsEnabled = checkVideo.IsChecked.GetValueOrDefault();
+            checkDelay           .IsEnabled = checkVideo.IsChecked.GetValueOrDefault();
+
+            bool chatSettingsEnabled = checkChatDownload.IsChecked.GetValueOrDefault();
+            TextDownloadFormat .Foreground = chatSettingsEnabled ? enabledBrush : disabledBrush;
+            TextCompression    .Foreground = chatSettingsEnabled ? enabledBrush : disabledBrush;
+            radioJson           .IsEnabled = chatSettingsEnabled;
+            radioTxt            .IsEnabled = chatSettingsEnabled;
+            radioHTML           .IsEnabled = chatSettingsEnabled;
+            RadioCompressionNone.IsEnabled = chatSettingsEnabled;
+            RadioCompressionGzip.IsEnabled = chatSettingsEnabled;
+            StackChatCompression.Visibility = radioJson.IsChecked.GetValueOrDefault() ? Visibility.Visible : Visibility.Collapsed;
+
+            checkEmbed        .IsEnabled = chatSettingsEnabled && !radioTxt.IsChecked.GetValueOrDefault();
+            bool embedEnabled = chatSettingsEnabled && checkEmbed.IsChecked.GetValueOrDefault();
+            CheckBttvEmbed.IsEnabled = embedEnabled;
+            CheckFfzEmbed .IsEnabled = embedEnabled;
+            CheckStvEmbed .IsEnabled = embedEnabled;
+            checkDelayChat.IsEnabled = chatSettingsEnabled;
+
+            checkMerge.IsEnabled = checkVideo.IsChecked.GetValueOrDefault() || checkChatDownload.IsChecked.GetValueOrDefault();
+            if (!checkMerge.IsEnabled && _parentPage is not PageVodMerge)
             {
-                var appTextBrush = (Brush)Application.Current.Resources["AppText"];
-                TextDownloadFormat.Foreground = appTextBrush;
-                TextCompression.Foreground = appTextBrush;
+                checkMerge.IsChecked = false;
             }
-            catch { /* Ignored */ }
+
+            numDelay.IsEnabled = checkMerge.IsChecked.GetValueOrDefault();
+
+            checkRender.IsEnabled = (checkChatDownload.IsChecked.GetValueOrDefault() || _parentPage is PageVodMerge) && radioJson.IsChecked.GetValueOrDefault();
         }
 
-        private void checkChat_Unchecked(object sender, RoutedEventArgs e)
+        private void UpdateEnabledEvent(object sender, RoutedEventArgs e)
         {
-            checkRender.IsEnabled = false;
-            checkRender.IsChecked = false;
-            radioJson.IsEnabled = false;
-            radioTxt.IsEnabled = false;
-            radioHTML.IsEnabled = false;
-            checkEmbed.IsEnabled = false;
-            CheckBttvEmbed.IsEnabled = CheckFfzEmbed.IsEnabled = CheckStvEmbed.IsEnabled = false;
-            checkDelayChat.IsEnabled = false;
-            RadioCompressionNone.IsEnabled = false;
-            RadioCompressionGzip.IsEnabled = false;
-            try
-            {
-                var appTextDisabledBrush = (Brush)Application.Current.Resources["AppTextDisabled"];
-                TextDownloadFormat.Foreground = appTextDisabledBrush;
-                TextCompression.Foreground = appTextDisabledBrush;
-            }
-            catch { /* Ignored */ }
-        }
-
-        private void radioJson_Checked(object sender, RoutedEventArgs e)
-        {
-            if (this.IsInitialized)
-            {
-                checkEmbed.IsEnabled = true;
-                CheckBttvEmbed.IsEnabled = CheckFfzEmbed.IsEnabled = CheckStvEmbed.IsEnabled = checkEmbed.IsChecked.GetValueOrDefault();
-                checkRender.IsEnabled = true;
-                StackChatCompression.Visibility = Visibility.Visible;
-            }
-        }
-
-        private void radioTxt_Checked(object sender, RoutedEventArgs e)
-        {
-            if (this.IsInitialized)
-            {
-                checkEmbed.IsEnabled = false;
-                CheckBttvEmbed.IsEnabled = CheckFfzEmbed.IsEnabled = CheckStvEmbed.IsEnabled = false;
-                checkRender.IsEnabled = false;
-                StackChatCompression.Visibility = Visibility.Collapsed;
-            }
-        }
-
-        private void radioHTML_Checked(object sender, RoutedEventArgs e)
-        {
-            if (this.IsInitialized)
-            {
-                checkEmbed.IsEnabled = true;
-                CheckBttvEmbed.IsEnabled = CheckFfzEmbed.IsEnabled = CheckStvEmbed.IsEnabled = checkEmbed.IsChecked.GetValueOrDefault();
-                checkRender.IsEnabled = false;
-                StackChatCompression.Visibility = Visibility.Collapsed;
-            }
+            UpdateEnabled();
         }
 
         private void Window_OnSourceInitialized(object sender, EventArgs e)
         {
             App.RequestTitleBarChange();
-        }
-
-        private void CheckVideo_OnChecked(object sender, RoutedEventArgs e)
-        {
-            if (this.IsInitialized)
-            {
-                ComboPreferredQuality.IsEnabled = checkVideo.IsChecked.GetValueOrDefault();
-                checkDelay.IsEnabled = checkVideo.IsChecked.GetValueOrDefault();
-                try
-                {
-                    var newBrush = (Brush)Application.Current.Resources[checkVideo.IsChecked.GetValueOrDefault() ? "AppText" : "AppTextDisabled"];
-                    TextPreferredQuality.Foreground = newBrush;
-                }
-                catch { /* Ignored */ }
-            }
         }
 
         private void ComboPreferredQuality_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -881,14 +1107,6 @@ namespace TwitchDownloaderWPF
             {
                 Settings.Default.PreferredQuality = preferredQuality;
             }
-        }
-
-        private void CheckEmbed_CheckedChanged(object sender, RoutedEventArgs e)
-        {
-            if (!IsInitialized)
-                return;
-
-            CheckBttvEmbed.IsEnabled = CheckFfzEmbed.IsEnabled = CheckStvEmbed.IsEnabled = checkEmbed.IsChecked.GetValueOrDefault();
         }
     }
 }

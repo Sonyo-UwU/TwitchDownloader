@@ -12,7 +12,7 @@ namespace TwitchDownloaderWPF.TwitchTasks
     public abstract class TwitchTask : INotifyPropertyChanged
     {
         public event PropertyChangedEventHandler PropertyChanged;
-        public TaskData Info { get; } = new();
+        public TaskData Info { get; init; } = new();
 
         public int Progress
         {

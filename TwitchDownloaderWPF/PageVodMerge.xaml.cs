@@ -44,6 +44,10 @@ namespace TwitchDownloaderWPF
             public readonly string DisplayTime => VideoLength <= 0 ? Translations.Strings.UnknownVideoLength : TimeSpan.FromSeconds(VideoLength).ToString("c");
         }
 
+        public ChatRoot ChatInfo => InputsChat[0].ChatInfo;
+        public string VideoFileName => InputsVideo[0].FileName;
+        public bool QueueChatMode = true;
+
         private readonly ObservableCollection<ChatInputInfo> InputsChat = [];
         private readonly ObservableCollection<VideoInputInfo> InputsVideo = [];
         private CancellationTokenSource _cancellationTokenSource;
@@ -233,12 +237,7 @@ namespace TwitchDownloaderWPF
             );
         }
 
-        public ChatMergeOptions GetChatOptions()
-        {
-            return GetChatOptions(GetDefaultOutputFilename());
-        }
-
-        private ChatMergeOptions GetChatOptions(string outputFile)
+        public ChatMergeOptions GetChatOptions(string outputFile)
         {
             ChatMergeOptions options = new()
             {
@@ -271,7 +270,7 @@ namespace TwitchDownloaderWPF
             return options;
         }
 
-        private VideoMergeOptions GetVideoOptions(string outputFile)
+        public VideoMergeOptions GetVideoOptions(string outputFile)
         {
             VideoMergeOptions options = new()
             {
@@ -612,6 +611,7 @@ namespace TwitchDownloaderWPF
 
         private void MenuItemEnqueue_Click(object sender, RoutedEventArgs e)
         {
+            QueueChatMode = TabChat.IsSelected;
             var queueOptions = new WindowQueueOptions(this)
             {
                 Owner = Application.Current.MainWindow,
