@@ -71,9 +71,9 @@
                 </StackPanel>
                 <CheckBox x:Name="checkDelayChat" Content="{lex:Loc DelayDownload}" HorizontalAlignment="Left" Margin="5,5,0,0" VerticalAlignment="Top" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}" IsEnabled="False" />
             </StackPanel>
-            <CheckBox x:Name="checkMerge" Visibility="Visible" Content="{lex:Loc MergeInputs}" HorizontalAlignment="Left" Margin="0,8,0,0" VerticalAlignment="Top" Checked="UpdateEnabledEvent" Unchecked="UpdateEnabledEvent" Foreground="{DynamicResource AppText}" BorderBrush="{DynamicResource AppElementBorder}"/>
+            <CheckBox x:Name="checkMerge" Visibility="Collapsed" Content="{lex:Loc MergeInputs}" HorizontalAlignment="Left" Margin="0,8,0,0" VerticalAlignment="Top" Checked="UpdateEnabledEvent" Unchecked="UpdateEnabledEvent" Foreground="{DynamicResource AppText}" BorderBrush="{DynamicResource AppElementBorder}"/>
             <StackPanel Orientation="Horizontal" Margin="20,0,0,0">
-                <TextBlock Text="{lex:Loc DelayBetweenParts}" HorizontalAlignment="Right" Margin="5,6,0,0" Foreground="{DynamicResource AppText}" />
+                <TextBlock x:Name="TextDelay" Text="{lex:Loc DelayBetweenParts}" HorizontalAlignment="Right" Margin="5,6,0,0" Foreground="{DynamicResource AppText}" />
                 <hc:NumericUpDown x:Name="numDelay" Margin="5,0,0,0" Minimum="0" Maximum="60" Value="3" Width="75" Background="{DynamicResource AppElementBackground}" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}" />
             </StackPanel>
             <CheckBox x:Name="checkRender" IsEnabled="False" Content="{lex:Loc RenderChat}" HorizontalAlignment="Left" Margin="0,8,0,0" VerticalAlignment="Top" BorderBrush="{DynamicResource AppElementBorder}" Foreground="{DynamicResource AppText}"/>

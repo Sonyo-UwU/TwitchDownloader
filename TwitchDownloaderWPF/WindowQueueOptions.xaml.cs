@@ -104,6 +104,7 @@ namespace TwitchDownloaderWPF
                 checkEmbed.Visibility = Visibility.Collapsed;
                 StackThirdPartyEmbed.Visibility = Visibility.Collapsed;
                 checkDelayChat.Visibility = Visibility.Collapsed;
+                TextDelay.Visibility = Visibility.Collapsed;
                 numDelay.Visibility = Visibility.Collapsed;
                 checkRender.Visibility = pageMerge.QueueChatMode ? Visibility.Visible : Visibility.Collapsed;
                 checkMerge.Visibility = Visibility.Visible;
@@ -1084,6 +1085,7 @@ namespace TwitchDownloaderWPF
             }
 
             numDelay.IsEnabled = checkMerge.IsChecked.GetValueOrDefault();
+            TextDelay.Foreground = checkMerge.IsChecked.GetValueOrDefault() ? enabledBrush : disabledBrush;
 
             checkRender.IsEnabled = (checkChatDownload.IsChecked.GetValueOrDefault() || _parentPage is PageVodMerge) && radioJson.IsChecked.GetValueOrDefault();
         }

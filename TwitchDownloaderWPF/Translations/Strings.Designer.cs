@@ -340,6 +340,15 @@ namespace TwitchDownloaderWPF.Translations {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Chat.
+        /// </summary>
+        public static string Chat {
+            get {
+                return ResourceManager.GetString("Chat", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Chat Badge Filter:.
         /// </summary>
         public static string ChatBadgeFilter {
@@ -435,6 +444,15 @@ namespace TwitchDownloaderWPF.Translations {
         public static string ChatHeight {
             get {
                 return ResourceManager.GetString("ChatHeight", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Chat Merge.
+        /// </summary>
+        public static string ChatMerge {
+            get {
+                return ResourceManager.GetString("ChatMerge", resourceCulture);
             }
         }
         
@@ -615,6 +633,15 @@ namespace TwitchDownloaderWPF.Translations {
         public static string DateCustomFormattingHyperlink {
             get {
                 return ResourceManager.GetString("DateCustomFormattingHyperlink", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Delay between parts:.
+        /// </summary>
+        public static string DelayBetweenParts {
+            get {
+                return ResourceManager.GetString("DelayBetweenParts", resourceCulture);
             }
         }
         
@@ -822,6 +849,15 @@ namespace TwitchDownloaderWPF.Translations {
         public static string EnqueueDownload {
             get {
                 return ResourceManager.GetString("EnqueueDownload", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Enqueue Merge.
+        /// </summary>
+        public static string EnqueueMerge {
+            get {
+                return ResourceManager.GetString("EnqueueMerge", resourceCulture);
             }
         }
         
@@ -1578,6 +1614,15 @@ namespace TwitchDownloaderWPF.Translations {
         public static string MergeChats {
             get {
                 return ResourceManager.GetString("MergeChats", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Merge Inputs.
+        /// </summary>
+        public static string MergeInputs {
+            get {
+                return ResourceManager.GetString("MergeInputs", resourceCulture);
             }
         }
         
@@ -2419,6 +2464,15 @@ namespace TwitchDownloaderWPF.Translations {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Total length:.
+        /// </summary>
+        public static string TotalLength {
+            get {
+                return ResourceManager.GetString("TotalLength", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Trim:.
         /// </summary>
         public static string TrimChat {
@@ -2698,6 +2752,15 @@ namespace TwitchDownloaderWPF.Translations {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Video.
+        /// </summary>
+        public static string Video {
+            get {
+                return ResourceManager.GetString("Video", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Created:.
         /// </summary>
         public static string VideoCreatedAt {
@@ -2712,6 +2775,15 @@ namespace TwitchDownloaderWPF.Translations {
         public static string VideoDownloadThreads {
             get {
                 return ResourceManager.GetString("VideoDownloadThreads", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Video Merge.
+        /// </summary>
+        public static string VideoMerge {
+            get {
+                return ResourceManager.GetString("VideoMerge", resourceCulture);
             }
         }
         

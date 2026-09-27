@@ -8,7 +8,7 @@ namespace TwitchDownloaderWPF.TwitchTasks
     {
         public VideoMergeOptions MergeOptions { get; init; }
         public TwitchTask[] DependantTasks { get; init; } = [];
-        public override string TaskType { get; } = "VideoMerge";//Translations.Strings.VideoMerge;
+        public override string TaskType { get; } = Translations.Strings.VideoMerge;
         public override string OutputFile => MergeOptions.OutputFile;
 
         public override void Reinitialize()

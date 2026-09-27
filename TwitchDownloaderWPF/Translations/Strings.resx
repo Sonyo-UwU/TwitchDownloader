@@ -1066,4 +1066,28 @@
   <data name="MergeVideos" xml:space="preserve">
     <value>Merge Videos</value>
   </data>
+  <data name="ChatMerge" xml:space="preserve">
+    <value>Chat Merge</value>
+  </data>
+  <data name="VideoMerge" xml:space="preserve">
+    <value>Video Merge</value>
+  </data>
+  <data name="Video" xml:space="preserve">
+    <value>Video</value>
+  </data>
+  <data name="Chat" xml:space="preserve">
+    <value>Chat</value>
+  </data>
+  <data name="TotalLength" xml:space="preserve">
+    <value>Total length:</value>
+  </data>
+  <data name="DelayBetweenParts" xml:space="preserve">
+    <value>Delay between parts:</value>
+  </data>
+  <data name="MergeInputs" xml:space="preserve">
+    <value>Merge Inputs</value>
+  </data>
+  <data name="EnqueueMerge" xml:space="preserve">
+    <value>Enqueue Merge</value>
+  </data>
 </root>
