@@ -142,7 +142,7 @@ namespace TwitchDownloaderCore
                 comment =>
                 {
                     var copy = comment.Clone();
-                    copy.content_offset_seconds += offset;
+                    copy.content_offset_seconds = copy.content_offset_seconds - chatRoot.video.start + offset + outputChatRoot.video.start;
                     copy.created_at = outputChatRoot.video.created_at + TimeSpan.FromSeconds(copy.content_offset_seconds);
                     return copy;
                 }
