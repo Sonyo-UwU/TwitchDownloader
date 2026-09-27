@@ -63,8 +63,7 @@ namespace TwitchDownloaderWPF
         {
             OpenFileDialog openFileDialog = new()
             {
-                Filter = "Video files (*.mp4;*.ts;*.mov;*.webm;*.mkv)|*.json;*.json.gz;*.mp4;*.ts;*.mov;*.webm;*.mkv|JSON Files (*.json;*.json.gz)|*.json;*.json.gz;*.mp4;*.ts;*.mov;*.webm;*.mkv|All Files (*.*)|*.*",
-                FilterIndex = TabVideo.IsSelected ? 1 : 2,
+                Filter = "JSON & Video files|*.json;*.json.gz;*.mp4;*.ts;*.mov;*.webm;*.mkv|All Files (*.*)|*.*",
                 Multiselect = true
             };
             if (openFileDialog.ShowDialog() != true)
